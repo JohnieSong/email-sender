@@ -78,7 +78,7 @@ class EmailSender(QMainWindow):
     def initUI(self):
         """初始化UI"""
         # 设置基本窗口属性
-        self.setWindowTitle('卓帆 - 邮件发送工具')
+        self.setWindowTitle('【BBRHub】邮件发送工具')
         # 设置窗口大小
 
         self.setGeometry(100, 100, 1200, 700)
