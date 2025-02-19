@@ -10,7 +10,7 @@ icon_path = os.path.join(base_dir, "imgs", "logo.ico")
 # 构建命令列表
 command = [
     'mail_sender.py',  # 主程序文件
-    '--name=邮件批量发送工具',  # 生成的exe名称
+    f'--name=邮件批量发送工具',  # 生成的exe名称，使用 f-string
     '--noconsole',  # 不显示控制台
     '--onefile',  # 打包成单个exe文件
     '--clean',  # 清理临时文件
@@ -20,6 +20,7 @@ command = [
     '--log-level=INFO',  # 日志级别
     f'--icon={icon_path}',  # 使用ico图标
     '--add-data=imgs;imgs',  # 添加资源文件
+    '--distpath=dist',  # 指定输出目录
 ]
 
 # 运行 PyInstaller
