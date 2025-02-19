@@ -24,18 +24,17 @@ jobs:
       run: |
         python -m pip install --upgrade pip
         pip install -r requirements.txt
-        pip install pyinstaller
         
-    - name: Build with PyInstaller
+    - name: Build Application
       run: |
-        pyinstaller --noconfirm --onefile --windowed --icon=imgs/logo.ico --add-data "imgs;imgs" mail_sender.py
+        python build.py
         
     - name: Create Release
       if: startsWith(github.ref, 'refs/tags/')
       uses: softprops/action-gh-release@v2
       with:
         files: |
-          dist/mail_sender.exe
+          dist/邮件批量发送工具.exe
           README.md
           requirements.txt
         body_path: CHANGELOG.md
@@ -48,7 +47,7 @@ jobs:
       with:
         name: email-sender
         path: |
-          dist/mail_sender.exe
+          dist/邮件批量发送工具.exe
           README.md
           requirements.txt
         retention-days: 90 
