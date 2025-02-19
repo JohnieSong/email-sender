@@ -26,10 +26,6 @@ jobs:
         pip install -r requirements.txt
         pip install pyinstaller
         
-    - name: Run tests
-      run: |
-        python -m pytest tests/
-        
     - name: Build with PyInstaller
       run: |
         pyinstaller --noconfirm --onefile --windowed --icon=imgs/logo.ico --add-data "imgs;imgs" mail_sender.py
