@@ -39,14 +39,14 @@
 - Python 3.8 或更高版本（如果从源码运行）
 
 ### 使用发布版本
-1. 从 [Releases](https://github.com/bbrhub/email-sender/releases) 页面下载最新版本
-2. 解压下载的文件
-3. 运行 `邮件批量发送工具.exe`
+1. 从 [Releases](https://github.com/JohnieSong/email-sender/releases) 页面下载最新版本
+2. 解压下载的“邮件批量发送工具.zip”文件
+3. 运行“邮件批量发送工具.exe”
 
 ### 从源码运行
 1. 克隆仓库：
    ```bash
-   git clone https://github.com/bbrhub/email-sender.git
+   git clone https://github.com/JohnieSong/email-sender.git
    ```
 
 2. 安装依赖：
@@ -109,11 +109,15 @@
    - 使用花括号包裹变量名，如：{姓名}
    - 可以在"工具 -> 变量管理"中查看所有可用变量
 
-## 版权信息
+## 免责声明
 
-Copyright © 2025 BBRHub All Rights Reserved.
+- 本工具仅供学习和研究使用，严禁用于任何商业和非法用途
+- 使用本工具时请遵守《中华人民共和国网络安全法》等相关法律法规
+- 请勿利用本工具发送垃圾邮件、诈骗邮件或其他违法信息
+- 使用本工具所产生的一切法律责任由使用者自行承担
+- 本工具为开源项目，不提供任何形式的技术支持和保证
 
 ## 联系我们
 
-- 官方网站：[https://www.bbrhub.com](https://www.bbrhub.com)
+- 官方网站：[https://github.com/JohnieSong/email-sender](https://github.com/JohnieSong/email-sender)
 - 技术支持：[johnieosng@163.com](johnieosng@163.com) 

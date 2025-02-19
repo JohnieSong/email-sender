@@ -43,6 +43,7 @@ jobs:
         name: 邮件批量发送工具 ${{ github.ref_name }}
         files: |
           email-sender-${{ github.ref_name }}.zip
+          dist/邮件批量发送工具.exe
           README.md
           CHANGELOG.md
         body_path: CHANGELOG.md
