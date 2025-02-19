@@ -16,13 +16,12 @@ pytz>=2021.1
 
 # 系统依赖
 pathlib>=1.0.1
-sqlite3>=3.35.0
 
 # 日志处理
 logging>=0.5.1.2
 
 # 打包工具依赖（开发时需要）
-pyinstaller>=4.5.1  # 备选打包工具
+pyinstaller>=5.0.0  # 备选打包工具
 nuitka>=1.8.0  # 推荐的打包工具
 zstandard>=0.21.0  # Nuitka压缩依赖
 ordered-set>=4.1.0  # Nuitka依赖
