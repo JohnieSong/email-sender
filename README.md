@@ -127,7 +127,7 @@
 
 ## 联系我们
 
-- 官方网站：[https://github.com/JohnieSong/email-sender](https://github.com/JohnieSong/email-sender)
+- 官方网站：[https://blog.bbrhub.com/](https://blog.bbrhub.com/)
 
 - 技术支持邮箱：[support@bbrhub.com](support@bbrhub.com)
 
