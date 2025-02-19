@@ -370,7 +370,6 @@ class SenderDialog(QDialog):
                     <p style='margin: 0;'><b>邮箱地址:</b> {sender_info['email']}</p>
                     <p style='margin: 5px 0;'><b>邮箱类型:</b> {sender_info.get('server_type')}</p>
                     <p style='margin: 0;'><b>状态:</b> <span style='color: #52c41a;'>已配置</span></p>
-                    <p style='margin: 5px 0;'><b>授权码:</b> {sender_info.get('password', '******')}</p>
                 </div>
             """
             
