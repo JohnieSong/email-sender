@@ -58,7 +58,7 @@ jobs:
         name: 邮件批量发送工具 ${{ github.ref_name }}
         files: |
           email-sender-${{ github.ref_name }}.zip
-          email-sender.exe
+          dist/email-sender.exe
           README.md
           CHANGELOG.md
         body_path: CHANGELOG.md
@@ -73,7 +73,7 @@ jobs:
       with:
         name: email-sender
         path: |
-          email-sender.exe
+          dist/email-sender.exe
           README.md
           requirements.txt
         retention-days: 90 
