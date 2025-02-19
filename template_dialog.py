@@ -175,7 +175,7 @@ class TemplateDialog(QDialog):
         try:
             return self.db.get_templates()
         except Exception as e:
-            print(f"加载模板失败: {str(e)}")
+            MessageBox.show_error(f"加载模板失败: {str(e)}")
             return {}
 
     def load_template_list(self):
@@ -542,4 +542,48 @@ class TemplateDialog(QDialog):
                 f'导出失败：{str(e)}',
                 'critical',
                 parent=self
-            ) 
+            )
+
+    def preview_template(self, template_name):
+        """当选择模板时更新预览"""
+        if not template_name:
+            self.preview_content.clear()
+            self.status_label.setText('未选择模板')
+            return
+        
+        try:
+            # 从数据库加载模板
+            templates = self.db.get_templates()
+            template = templates.get(template_name)
+            
+            if template:
+                # 从 config.ini 获取测试数据
+                test_data = self.config.get_test_data()
+                if not test_data:  # 如果没有测试数据，创建默认值
+                    test_data = {
+                        'test_sender': 'test@example.com',
+                        'test_recipient': 'recipient@example.com',
+                        'test_subject': '测试主题',
+                        'test_content': '测试内容'
+                    }
+                    self.config.save_test_data(test_data)
+                
+                # 替换标题中的变量
+                title = template['title']
+                for key, value in test_data.items():
+                    placeholder = '{' + key + '}'
+                    title = title.replace(placeholder, str(value))
+                
+                # 替换内容中的变量
+                content = template['content']
+                for key, value in test_data.items():
+                    placeholder = '{' + key + '}'
+                    content = content.replace(placeholder, str(value))
+                
+                # 更新预览
+                self.preview_title.setText(title)
+                self.preview_content.setHtml(content)
+                self.status_label.setText(f'已加载"{template_name}"模板')
+        except Exception as e:
+            self.status_label.setText(f'加载模板失败: {str(e)}')
+            print(f"加载模板失败: {str(e)}") 

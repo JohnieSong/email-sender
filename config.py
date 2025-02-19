@@ -3,56 +3,72 @@ import os
 import json
 import sys
 import configparser
+from pathlib import Path
+from message_box import MessageBox
 
 class Config:
     def __init__(self):
-        # 只初始化必要的路径
-        if hasattr(sys, '_MEIPASS'):
-            base_dir = os.path.dirname(sys.executable)
-        else:
-            base_dir = os.path.abspath(".")
-            
-        self.config_dir = os.path.join(base_dir, 'config')
-        os.makedirs(self.config_dir, exist_ok=True)
+        # 获取用户目录
+        user_dir = str(Path.home())
+        self.app_dir = os.path.join(user_dir, '.email_sender')
         
-        self.settings_file = os.path.join(self.config_dir, 'settings.json')
-        self.ini_file = 'config.ini'
+        # 创建应用目录
+        if not os.path.exists(self.app_dir):
+            os.makedirs(self.app_dir)
+            
+        # 获取程序运行目录（考虑打包后的情况）
+        if getattr(sys, 'frozen', False):
+            # 打包后的exe路径
+            self.exe_dir = os.path.dirname(sys.executable)
+        else:
+            # 开发环境下的脚本路径
+            self.exe_dir = os.path.dirname(os.path.abspath(__file__))
+        
+        # 设置配置目录
+        self.config_dir = os.path.join(self.app_dir, 'config')
+        
+        # 创建配置目录
+        if not os.path.exists(self.config_dir):
+            os.makedirs(self.config_dir)
+            
+        # 设置配置文件路径
+        self.settings_file = os.path.join(self.config_dir, 'settings.json')  # 移动到 config 目录
+        self.ini_file = os.path.join(self.exe_dir, 'config.ini')  # config.ini 保持在程序目录
         
         # 延迟初始化其他内容
         self._settings = None
         self._db = None
         
+        # 创建默认配置文件
+        self.create_default_config()
+    
+    @property
+    def settings(self):
+        """延迟加载设置"""
+        if self._settings is None:
+            try:
+                with open(self.settings_file, 'r', encoding='utf-8') as f:
+                    self._settings = json.load(f)
+            except:
+                self._settings = {}
+        return self._settings
+    
+    def save_settings(self):
+        """保存设置到文件"""
+        try:
+            with open(self.settings_file, 'w', encoding='utf-8') as f:
+                json.dump(self._settings, f, ensure_ascii=False, indent=2)
+            return True
+        except Exception as e:
+            MessageBox.show_error(f"保存设置失败: {str(e)}")
+            return False
+    
     @property
     def db(self):
         """延迟加载数据库实例"""
         if self._db is None:
             self._db = Database(self)
         return self._db
-
-    def _init_settings_file(self):
-        """初始化设置文件"""
-        if not os.path.exists(self.settings_file):
-            with open(self.settings_file, 'w', encoding='utf-8') as f:
-                json.dump({
-                    "last_sender": "",
-                    "last_template": "",
-                    "window_size": [1400, 900],
-                    "splitter_ratio": [25, 75]
-                }, f, ensure_ascii=False, indent=2)
-
-    def _init_config_ini(self):
-        """初始化配置文件"""
-        if not os.path.exists(self.ini_file):
-            config = configparser.ConfigParser()
-            config['TestData'] = {
-                '姓名': '测试用户',
-                '考试科目': '测试科目',
-                '身份证号': '123456789012345678',
-                '考试时间': '2024-01-01 09:00',
-                '年龄': '18'  # 添加年龄默认值
-            }
-            with open(self.ini_file, 'w', encoding='utf-8') as f:
-                config.write(f)
 
     def export_config(self):
         """导出配置到文件"""
@@ -61,19 +77,10 @@ class Config:
             templates = self.db.get_templates()
             with open(os.path.join(self.config_dir, 'templates.json'), 'w', encoding='utf-8') as f:
                 json.dump(templates, f, ensure_ascii=False, indent=2)
-            
-            # 导出发件人（不含密码）
-            senders = self.db.get_sender_list()
-            safe_senders = [{
-                'email': s['email'],
-                'server_type': s['server_type']
-            } for s in senders]
-            with open(os.path.join(self.config_dir, 'senders.json'), 'w', encoding='utf-8') as f:
-                json.dump(safe_senders, f, ensure_ascii=False, indent=2)
                 
             return True
         except Exception as e:
-            print(f"导出配置失败: {str(e)}")
+            MessageBox.show_error(f"导出配置失败: {str(e)}")
             return False
 
     def import_config(self):
@@ -89,7 +96,7 @@ class Config:
             
             return True
         except Exception as e:
-            print(f"导入配置失败: {str(e)}")
+            MessageBox.show_error(f"导入配置失败: {str(e)}")
             return False
 
     def get_sender_list(self):
@@ -107,24 +114,18 @@ class Config:
     def save_last_sender(self, email):
         """保存最后使用的发件人"""
         try:
-            with open(self.settings_file, 'r', encoding='utf-8') as f:
-                settings = json.load(f)
-            settings['last_sender'] = email
-            with open(self.settings_file, 'w', encoding='utf-8') as f:
-                json.dump(settings, f, ensure_ascii=False, indent=2)
-            return True
+            self.settings['last_sender'] = email
+            return self.save_settings()
         except Exception as e:
-            print(f"保存最后使用的发件人失败: {str(e)}")
+            MessageBox.show_error(f"保存最后使用的发件人失败: {str(e)}")
             return False
 
     def get_last_sender(self):
         """获取最后使用的发件人"""
         try:
-            with open(self.settings_file, 'r', encoding='utf-8') as f:
-                settings = json.load(f)
-            return settings.get('last_sender', '')
+            return self.settings.get('last_sender', '')
         except Exception as e:
-            print(f"获取最后使用的发件人失败: {str(e)}")
+            MessageBox.show_error(f"获取最后使用的发件人失败: {str(e)}")
             return ''
 
     def get_variables(self):
@@ -132,40 +133,67 @@ class Config:
         return self.db.get_variables()
 
     def get_test_data(self):
-        """从配置文件获取测试数据"""
+        """从 config.ini 获取测试数据
+        
+        Returns:
+            dict: 包含测试数据的字典，如果配置不存在或读取失败则返回 None
+        """
         try:
+            # 检查文件是否存在
+            if not os.path.exists(self.ini_file):
+                MessageBox.show_error("测试配置文件不存在")
+                return None
+            
             config = configparser.ConfigParser()
             config.read(self.ini_file, encoding='utf-8')
             
-            if 'TestData' in config:
-                return dict(config['TestData'])
+            # 检查 Test 部分是否存在
+            if not config.has_section('Test'):
+                MessageBox.show_error("测试配置不存在")
+                return None
             
-            # 如果没有测试数据，从数据库获取变量并创建默认值
-            variables = self.get_variables()
-            test_data = {var: f'测试{var}' for var in variables}
-            self.save_test_data(test_data)
+            # 获取所有测试数据
+            test_data = {}
+            for key, value in config['Test'].items():
+                test_data[key] = value
+            
             return test_data
+            
         except Exception as e:
-            print(f"读取测试数据失败: {str(e)}")
-            return {}
+            MessageBox.show_error(f"读取测试数据失败: {str(e)}")
+            return None
 
-    def save_test_data(self, test_data):
-        """保存测试数据到配置文件"""
+    def save_test_data(self, data):
+        """保存测试数据到 config.ini
+        
+        Args:
+            data (dict): 包含测试数据的字典
+            
+        Returns:
+            bool: 保存成功返回 True，失败返回 False
+        """
         try:
             config = configparser.ConfigParser()
-            config.read(self.ini_file, encoding='utf-8')
             
-            if 'TestData' not in config:
-                config['TestData'] = {}
+            # 如果文件存在，先读取现有配置
+            if os.path.exists(self.ini_file):
+                config.read(self.ini_file, encoding='utf-8')
+            
+            # 确保 Test 部分存在
+            if not config.has_section('Test'):
+                config.add_section('Test')
             
             # 更新测试数据
-            config['TestData'].update(test_data)
+            for key, value in data.items():
+                config['Test'][key] = str(value)
             
+            # 保存到文件
             with open(self.ini_file, 'w', encoding='utf-8') as f:
                 config.write(f)
             return True
+            
         except Exception as e:
-            print(f"保存测试数据失败: {str(e)}")
+            MessageBox.show_error(f"保存测试数据失败: {str(e)}")
             return False
 
     def get_smtp_server_list(self):
@@ -185,7 +213,7 @@ class Config:
                 })
             return server_list
         except Exception as e:
-            print(f"获取SMTP服务器列表失败: {str(e)}")
+            MessageBox.show_error(f"获取SMTP服务器列表失败: {str(e)}")
             return []
 
     def save_last_mail_server(self, server_type):
@@ -198,7 +226,7 @@ class Config:
             self.set_config('last_mail_server', server_type)
             self.save_config()
         except Exception as e:
-            print(f"保存最后使用的邮件服务器失败: {str(e)}")
+            MessageBox.show_error(f"保存最后使用的邮件服务器失败: {str(e)}")
 
     def get_last_mail_server(self):
         """获取最后使用的邮件服务器
@@ -209,5 +237,59 @@ class Config:
         try:
             return self.get_config('last_mail_server')
         except Exception as e:
-            print(f"获取最后使用的邮件服务器失败: {str(e)}")
-            return None 
+            MessageBox.show_error(f"获取最后使用的邮件服务器失败: {str(e)}")
+            return None
+
+    def create_default_config(self):
+        """创建默认的配置文件"""
+        try:
+            # 创建默认的 settings.json
+            if not os.path.exists(self.settings_file):
+                default_settings = {
+                    'last_sender': '',
+                    'last_template': '',
+                    'window_size': [1200, 700],
+                    'window_position': [100, 100]
+                }
+                try:
+                    with open(self.settings_file, 'w', encoding='utf-8') as f:
+                        json.dump(default_settings, f, ensure_ascii=False, indent=2)
+                except Exception as e:
+                    MessageBox.show_error(f"创建 settings.json 失败: {str(e)}\n路径: {self.settings_file}")
+            
+            # 创建默认的 config.ini
+            if not os.path.exists(self.ini_file):
+                try:
+                    # 检查是否有写入权限
+                    if not os.access(self.exe_dir, os.W_OK):
+                        MessageBox.show_error(f"没有写入权限: {self.exe_dir}\n请以管理员身份运行程序")
+                        return False
+                        
+                    config = configparser.ConfigParser()
+                    config['Test'] = {
+                        'test_sender': '',
+                        'test_recipient': '',
+                        'test_subject': '',
+                        'test_content': ''
+                    }
+                    with open(self.ini_file, 'w', encoding='utf-8') as f:
+                        config.write(f)
+                except Exception as e:
+                    MessageBox.show_error(f"创建 config.ini 失败: {str(e)}\n路径: {self.ini_file}")
+            
+            return True
+        except Exception as e:
+            MessageBox.show_error(f"创建默认配置文件失败: {str(e)}\n应用目录: {self.app_dir}")
+            return False
+
+    def get_receiver_list(self):
+        """获取收件人列表"""
+        return self.db.get_receiver_list()
+
+    def add_receiver(self, email, password, server_type='QQ企业邮箱'):
+        """添加收件人"""
+        return self.db.add_receiver(email, password, server_type)
+
+    def remove_receiver(self, email):
+        """删除收件人"""
+        return self.db.remove_receiver(email) 

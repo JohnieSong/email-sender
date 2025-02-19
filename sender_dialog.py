@@ -195,48 +195,45 @@ class SenderDialog(QDialog):
     
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.setStyleSheet(MODERN_STYLE)
         self.config = Config()
+        self.setWindowTitle('发件人管理')
+        self.setStyleSheet(MODERN_STYLE)
+        self.setMinimumSize(300, 400)
         self.initUI()
         self.load_senders()
 
     def initUI(self):
-        self.setWindowTitle('发件人管理')
-        # 设置大小为200*200
-        self.setMinimumSize(200, 200)
-        
         layout = QVBoxLayout()
         layout.setSpacing(10)
         
         # 发件人列表
         self.sender_list = QListWidget()
-        self.sender_list.setMinimumHeight(200) # 设置列表最小高度
         
         # 启用工具提示
         self.sender_list.setMouseTracking(True)
-        # 设置工具提示显示时间为 5 秒
         self.sender_list.setToolTipDuration(5000)
-        
-        # 添加工具提示事件
-        self.sender_list.itemEntered.connect(self.show_sender_tooltip)
         
         # 按钮组
         btn_layout = QHBoxLayout()
-        add_btn = QPushButton('添加')
-        add_btn.clicked.connect(self.add_sender)
-        edit_btn = QPushButton('修改')
-        edit_btn.clicked.connect(self.edit_sender)
-        delete_btn = QPushButton('删除')
-        delete_btn.clicked.connect(self.delete_sender)
-        close_btn = QPushButton('关闭')
-        close_btn.clicked.connect(self.accept)
         
+        # 创建按钮
+        add_btn = QPushButton('添加')
+        edit_btn = QPushButton('修改')
+        delete_btn = QPushButton('删除')
+        
+        # 连接按钮事件
+        add_btn.clicked.connect(self.add_sender)
+        edit_btn.clicked.connect(self.edit_sender)
+        delete_btn.clicked.connect(self.delete_sender)
+        
+        # 将按钮添加到布局中，并设置居中对齐
+        btn_layout.addStretch()  # 左侧弹性空间
         btn_layout.addWidget(add_btn)
         btn_layout.addWidget(edit_btn)
         btn_layout.addWidget(delete_btn)
-        btn_layout.addStretch()
-        btn_layout.addWidget(close_btn)
+        btn_layout.addStretch()  # 右侧弹性空间
         
+        # 添加组件到主布局
         layout.addWidget(QLabel('发件人列表:'))
         layout.addWidget(self.sender_list)
         layout.addLayout(btn_layout)

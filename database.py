@@ -4,9 +4,13 @@ import json
 from pathlib import Path
 from crypto_utils import CryptoUtils
 from logger import Logger
+import threading
 
 class Database:
     def __init__(self, config=None):
+        # 添加线程锁
+        self._lock = threading.Lock()
+        
         # 获取用户目录
         user_dir = str(Path.home())
         self.app_dir = os.path.join(user_dir, '.email_sender')
@@ -25,9 +29,11 @@ class Database:
         
     @property
     def conn(self):
-        """延迟创建数据库连接"""
+        """延迟创建数据库连接，并设置超时和线程安全"""
         if self._conn is None:
-            self._conn = sqlite3.connect(self.db_path)
+            self._conn = sqlite3.connect(self.db_path, timeout=20)
+            # 启用WAL模式以提高并发性能
+            self._conn.execute('PRAGMA journal_mode=WAL')
             self.init_database()
         return self._conn
 
@@ -587,13 +593,18 @@ class Database:
 
     def add_system_log(self, level, filename, line_number, message):
         """添加系统日志"""
-        cursor = self.conn.cursor()
-        cursor.execute('''
-            INSERT INTO system_logs (level, filename, line_number, message)
-            VALUES (?, ?, ?, ?)
-        ''', (level, filename, line_number, message))
-        self.conn.commit()
-        return True
+        try:
+            with self._lock:
+                cursor = self.conn.cursor()
+                cursor.execute('''
+                    INSERT INTO system_logs (level, filename, line_number, message)
+                    VALUES (?, ?, ?, ?)
+                ''', (level, filename, line_number, message))
+                self.conn.commit()
+                return True
+        except Exception as e:
+            print(f"写入系统日志失败: {str(e)}")
+            return False
 
     def get_system_logs(self, start_date=None, end_date=None, level=None):
         """获取系统日志
@@ -713,5 +724,24 @@ class Database:
         except Exception as e:
             self.logger.error(f"删除发件人失败: {str(e)}")
             return False
+
+    def begin_transaction(self):
+        """开始事务"""
+        self._lock.acquire()
+        self.conn.execute('BEGIN TRANSACTION')
+
+    def commit_transaction(self):
+        """提交事务"""
+        try:
+            self.conn.commit()
+        finally:
+            self._lock.release()
+
+    def rollback_transaction(self):
+        """回滚事务"""
+        try:
+            self.conn.rollback()
+        finally:
+            self._lock.release()
         
 

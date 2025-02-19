@@ -32,22 +32,25 @@ class VariableDialog(QDialog):
         
         # 按钮组
         btn_layout = QHBoxLayout()
+        
+        # 创建按钮
         add_btn = QPushButton('添加')
         edit_btn = QPushButton('修改')
         delete_btn = QPushButton('删除')
-        close_btn = QPushButton('关闭')
         
+        # 连接按钮事件
         add_btn.clicked.connect(self.add_variable)
         edit_btn.clicked.connect(self.edit_variable)
         delete_btn.clicked.connect(self.delete_variable)
-        close_btn.clicked.connect(self.accept)
         
+        # 将按钮添加到布局中，并设置居中对齐
+        btn_layout.addStretch()  # 左侧弹性空间
         btn_layout.addWidget(add_btn)
         btn_layout.addWidget(edit_btn)
         btn_layout.addWidget(delete_btn)
-        btn_layout.addStretch()
-        btn_layout.addWidget(close_btn)
+        btn_layout.addStretch()  # 右侧弹性空间
         
+        # 添加组件到主布局
         layout.addWidget(QLabel('变量列表:'))
         layout.addWidget(self.var_list)
         layout.addLayout(btn_layout)
@@ -65,6 +68,8 @@ class VariableDialog(QDialog):
         """添加新变量"""
         dialog = QDialog(self)
         dialog.setWindowTitle('添加变量')
+        # 设置对话框大小
+        dialog.setMinimumSize(300, 150)
         dialog.setModal(True)
         dialog.setStyleSheet(MODERN_STYLE)
         

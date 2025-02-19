@@ -20,6 +20,7 @@ command = [
     '--log-level=INFO',  # 日志级别
     f'--icon={icon_path}',  # 使用ico图标
     '--add-data=imgs;imgs',  # 添加资源文件
+    '--add-data=config.ini;.',  # 添加这行，确保 config.ini 被包含
     '--distpath=dist',  # 指定输出目录
 ]
 

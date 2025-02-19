@@ -1,4 +1,5 @@
 import os
+import sys
 import logging
 from datetime import datetime
 from pathlib import Path
@@ -18,11 +19,25 @@ class Logger:
         """初始化数据库连接"""
         cls._db = db
     
+    def _get_application_path(self):
+        """获取应用程序根目录路径
+        
+        Returns:
+            str: 返回程序根目录的绝对路径
+        """
+        if getattr(sys, 'frozen', False):
+            # 如果是打包后的exe运行
+            application_path = os.path.dirname(sys.executable)
+        else:
+            # 如果是开发环境运行
+            application_path = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        return application_path
+    
     def _initialize_logger(self):
         """初始化日志配置"""
-        # 获取程序运行目录
-        current_dir = os.path.dirname(os.path.abspath(__file__))
-        self.logs_dir = os.path.join(current_dir, 'logs')
+        # 获取程序根目录
+        application_path = self._get_application_path()
+        self.logs_dir = os.path.join(application_path, 'logs')
         
         # 创建logs文件夹
         if not os.path.exists(self.logs_dir):
@@ -63,11 +78,12 @@ class Logger:
     
     def _log_to_db(self, level, filename, lineno, message):
         """将日志写入数据库"""
-        try:
-            if self._db:  # 只在数据库连接存在时写入
+        if self._db:  # 只在数据库连接存在时写入
+            try:
                 self._db.add_system_log(level, filename, lineno, message)
-        except Exception as e:
-            print(f"写入日志到数据库失败: {str(e)}")
+            except Exception as e:
+                # 只打印错误，不再尝试写入数据库
+                print(f"写入日志到数据库失败: {str(e)}")
 
     def debug(self, message):
         self.logger.debug(message)
