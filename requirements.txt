@@ -19,12 +19,3 @@ pathlib>=1.0.1
 
 # 打包工具依赖（开发时需要）
 pyinstaller>=5.0.0  # 备选打包工具
-nuitka>=1.8.0  # 推荐的打包工具
-zstandard>=0.21.0  # Nuitka压缩依赖
-ordered-set>=4.1.0  # Nuitka依赖
-wheel>=0.40.0  # 打包工具依赖
-
-# 开发工具（可选）
-black>=22.3.0  # 代码格式化
-pylint>=2.15.0  # 代码检查
-pytest>=7.1.1  # 单元测试 
