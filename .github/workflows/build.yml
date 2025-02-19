@@ -8,10 +8,17 @@ on:
   pull_request:
     branches: [ main ]
 
-# 添加权限配置
+# 更新权限配置
 permissions:
   contents: write
   packages: write
+  actions: write
+  security-events: write
+  deployments: write
+  issues: write
+  pages: write
+  pull-requests: write
+  repository-projects: write
 
 jobs:
   build:
