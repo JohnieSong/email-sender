@@ -1,0 +1,34 @@
+# GUI框架
+PyQt5>=5.15.0
+PyQt5-sip>=12.9.0
+
+# 数据处理
+pandas>=1.3.0
+openpyxl>=3.0.7  # Excel文件支持
+xlrd>=2.0.1      # 旧版Excel文件支持
+
+# 加密
+cryptography>=3.4.7
+
+# 邮件处理
+python-dateutil>=2.8.2
+pytz>=2021.1
+
+# 系统依赖
+pathlib>=1.0.1
+sqlite3>=3.35.0
+
+# 日志处理
+logging>=0.5.1.2
+
+# 打包工具依赖（开发时需要）
+pyinstaller>=4.5.1  # 备选打包工具
+nuitka>=1.8.0  # 推荐的打包工具
+zstandard>=0.21.0  # Nuitka压缩依赖
+ordered-set>=4.1.0  # Nuitka依赖
+wheel>=0.40.0  # 打包工具依赖
+
+# 开发工具（可选）
+black>=22.3.0  # 代码格式化
+pylint>=2.15.0  # 代码检查
+pytest>=7.1.1  # 单元测试 

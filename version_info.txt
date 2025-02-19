@@ -1,0 +1,37 @@
+# 创建VSVersionInfo对象，用于设置版本信息
+VSVersionInfo(
+  # 创建FixedFileInfo对象，用于设置固定文件信息
+  ffi=FixedFileInfo(
+    filevers=(1, 0, 0, 0),        # 文件版本号
+    prodvers=(1, 0, 0, 0),        # 产品版本号
+    mask=0x3f,                    # 文件属性掩码
+    flags=0x0,                    # 文件标志
+    OS=0x4,                       # 支持的操作系统
+    fileType=0x1,                 # 文件类型
+    subtype=0x0,                  # 文件子类型
+    date=(0, 0)                   # 文件日期
+  ),
+  # 创建kids列表，用于设置子信息
+  kids=[
+    # 创建StringFileInfo对象，用于设置字符串信息
+    StringFileInfo(
+      [
+        # 创建StringTable对象，用于设置字符串表
+        StringTable(
+          u'040904B0',             # 字符串表的语言和代码页
+          [
+            # 创建StringStruct对象，用于设置字符串结构
+            StringStruct(u'FileDescription', u'邮件批量发送工具'),                           # 文件说明
+            StringStruct(u'FileVersion', u'1.0.0.0'),                                   # 文件版本
+            StringStruct(u'ProductName', u'邮件批量发送工具'),                               # 产品名称
+            StringStruct(u'CompanyName', u'BJ·BBRHub'),                       # 公司名称
+            StringStruct(u'ProductVersion', u'1.0.0.0'),                                # 产品版本
+            StringStruct(u'LegalCopyright', u'Copyright ©2025 BJ·BBRHub Inc. ')  # 版权信息
+          ]
+        )
+      ]
+    ),
+    # 创建VarFileInfo对象，用于设置变量信息
+    VarFileInfo([VarStruct(u'Translation', [1033, 1200])])             # 翻译信息
+  ]
+)
