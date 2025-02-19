@@ -19,6 +19,7 @@ command = [
     '--noconfirm',  # 覆盖已存在的文件
     '--log-level=INFO',  # 日志级别
     f'--icon={icon_path}',  # 使用ico图标
+    '--add-data=imgs;imgs',  # 添加资源文件
 ]
 
 # 运行 PyInstaller
