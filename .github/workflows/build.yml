@@ -40,11 +40,11 @@ jobs:
         
     - name: Build with PyInstaller
       run: |
-        pyinstaller --noconfirm --onefile --windowed ^
-          --add-data "imgs;imgs" ^
-          --add-data "styles.py;." ^
-          --icon=imgs/logo.ico ^
-          --name email-sender ^
+        pyinstaller --noconfirm --onefile --windowed `
+          --add-data "imgs;imgs" `
+          --add-data "styles.py;." `
+          --icon=imgs/logo.ico `
+          --name email-sender `
           main.py
         
     - name: Verify Build
