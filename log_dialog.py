@@ -169,7 +169,7 @@ class LogDialog(QDialog):
                 ]
                 
                 # 设置状态列的颜色
-                status_color = QColor('#28a745') if log[6] == '成功' else QColor('#dc3545')
+                status_color = QColor('#28a745') if log[6] == '发送成功' else QColor('#dc3545') 
                 items[5].setForeground(QBrush(status_color))
                 
                 # 设置单元格对齐方式

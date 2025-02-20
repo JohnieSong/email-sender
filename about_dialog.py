@@ -18,14 +18,14 @@ def get_version():
         with open(get_resource_path('app_version.txt'), 'r') as f:
             return f.read().strip()
     except:
-        return "1.2.5"  # 默认版本号
+        return "1.2.6"  # 默认版本号
 
 class AboutDialog(QDialog):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setWindowTitle('关于')
         self.setStyleSheet(MODERN_STYLE)
-        self.setFixedSize(400, 300)  # 减小窗口尺寸
+        self.setFixedSize(400, 400)  # 减小窗口尺寸
         self.setWindowFlags(Qt.Dialog | Qt.MSWindowsFixedSizeDialogHint)
         
         # 计算对话框相对于主窗口的居中位置
@@ -80,8 +80,8 @@ class AboutDialog(QDialog):
         features_label = QLabel("""
             <p style='margin: 0; line-height: 1.6; color: #333333;'>
             • 支持多种邮箱服务商<br>
-            • HTML邮件模板管理<br>
-            • Excel导入收件人信息<br>
+            • 多种格式邮件模板管理<br>
+            • Excel批量导入收件人信息<br>
             • 多线程发送和状态监控
             </p>
         """)

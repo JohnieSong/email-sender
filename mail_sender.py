@@ -25,7 +25,7 @@ from email import message_from_file
 from email.header import Header
 from bs4 import BeautifulSoup
 from about_dialog import AboutDialog
-from queue import Queue
+from queue import Queue, Empty
 import threading
 import chardet
 
@@ -86,6 +86,11 @@ class EmailSender(QMainWindow):
 
         self.send_thread = None
         self.test_thread = None  # 添加测试邮件线程
+
+        # 添加状态标签计时器
+        self.status_timer = QTimer()
+        self.status_timer.setSingleShot(True)  # 单次触发
+        self.status_timer.timeout.connect(self.hide_status)
 
     def load_data(self):
         """延迟加载数据"""
@@ -183,7 +188,7 @@ class EmailSender(QMainWindow):
         )
         
         if not file_name:
-            self.status_label.setText("用户取消导入Excel")
+            self.set_status("用户取消导入Excel")
             self.logger.info("用户取消导入Excel")
             return
         
@@ -194,7 +199,7 @@ class EmailSender(QMainWindow):
             
             # 检查必需列
             if not all(col in self.df.columns for col in required_columns):
-                self.status_label.setText('Excel文件必须包含：姓名、收件人邮箱')
+                MessageBox.show('错误', 'Excel文件必须包含：姓名、收件人邮箱', 'error', parent=self)
                 self.df = None
                 return
             
@@ -207,9 +212,9 @@ class EmailSender(QMainWindow):
                     
                     if column not in existing_vars:
                         self.db.add_variable(column)
-                        self.status_label.setText(f'已添加新变量：{column}')
+                        self.set_status(f'已添加新变量：{column}')
                 except Exception as e:
-                    self.status_label.setText(f'添加变量失败：{str(e)}')
+                    self.set_status(f'添加变量失败：{str(e)}')
             
             # 清空并更新日志表格
             self.log_table.setRowCount(0)
@@ -236,14 +241,13 @@ class EmailSender(QMainWindow):
             # 发出变量更新信号，更新所有相关UI
             self.on_variable_updated()
             
-            self.status_label.setText(f'已导入 {len(self.df)} 条数据，并更新变量列表')
+            self.set_status(f'已导入 {len(self.df)} 条数据，并更新变量列表')
             
         except pd.errors.ParserError:
-            self.status_label.setText('Excel文件格式错误')
+            MessageBox.show('错误', 'Excel文件格式错误', 'error', parent=self)
             self.df = None
         except Exception as e:
-            self.logger.error(f"导入Excel失败: {str(e)}")
-            self.status_label.setText(f'导入失败：{str(e)}')
+            MessageBox.show('错误', f'导入失败：{str(e)}', 'error', parent=self)
             self.df = None
 
     def import_template(self):
@@ -572,7 +576,7 @@ class EmailSender(QMainWindow):
 
     def preview_email(self):
         if not hasattr(self, 'df') or self.df is None or len(self.df.index) == 0:
-            self.status_label.setText('请先到文件菜单导入Excel文件')
+            MessageBox.show('提示', '请先到文件菜单导入Excel文件', 'warning', parent=self)
             return
             
         try:
@@ -585,14 +589,14 @@ class EmailSender(QMainWindow):
             # 检查是否有模板内容
             template_name = self.template_combo.currentText()
             if not template_name:
-                self.status_label.setText('请先选择邮件模板')
+                MessageBox.show('提示', '请先选择邮件模板', 'warning', parent=self)
                 preview_window.close()
                 return
                 
             templates = self.db.get_templates()
             template = templates.get(template_name)
             if not template:
-                self.status_label.setText('模板加载失败')
+                MessageBox.show('错误', '模板加载失败', 'error', parent=self)
                 preview_window.close()
                 return
             
@@ -602,7 +606,7 @@ class EmailSender(QMainWindow):
                 title_label = QLabel(f"邮件标题: {preview_title}")
                 preview_layout.addWidget(title_label)
             except Exception as e:
-                self.status_label.setText(f'标题预览失败：{str(e)}')
+                self.set_status(f'标题预览失败：{str(e)}')
                 preview_window.close()
                 return
                 
@@ -640,11 +644,12 @@ class EmailSender(QMainWindow):
                 self.preview_window = preview_window
                 
             except Exception as e:
-                self.status_label.setText(f'预览失败：{str(e)}')
+                self.set_status(f'预览失败：{str(e)}')
                 preview_window.close()
                 
         except Exception as e:
-            self.status_label.setText(f'预览窗口创建失败：{str(e)}')
+            MessageBox.show('错误', f'预览失败：{str(e)}', 'error', parent=self)
+            preview_window.close()
 
     def update_test_button(self):
         """更新发送测试按钮的倒计时显示"""
@@ -687,11 +692,11 @@ class EmailSender(QMainWindow):
         # 检查条件
         template_name = self.template_combo.currentText()
         if not template_name:
-            self.status_label.setText('请先选择邮件模板')
+            MessageBox.show('提示', '请先选择邮件模板', 'warning', parent=self)
             return
 
         if not self.current_sender:
-            self.status_label.setText('请选择发件人')
+            MessageBox.show('提示', '请选择发件人', 'warning', parent=self)
             return
 
         try:
@@ -699,12 +704,12 @@ class EmailSender(QMainWindow):
             templates = self.db.get_templates()
             template = templates.get(template_name)
             if not template:
-                self.status_label.setText('模板加载失败')
+                MessageBox.show('错误', '模板加载失败', 'error', parent=self)
                 return
 
             # 禁用测试按钮
             self.test_btn.setEnabled(False)
-            self.status_label.setText('正在发送测试邮件...')
+            self.set_status('正在发送测试邮件...')
 
             # 创建并启动测试邮件线程
             self.test_thread = TestEmailThread(
@@ -717,21 +722,20 @@ class EmailSender(QMainWindow):
             self.test_thread.start()
 
         except Exception as e:
-            self.logger.error(f"测试邮件发送失败: {str(e)}")
-            self.status_label.setText(f'发送失败：{str(e)}')
+            MessageBox.show('错误', f'发送失败：{str(e)}', 'error', parent=self)
             self.test_btn.setEnabled(True)
 
     def on_test_email_finished(self, success, message):
         """测试邮件发送完成处理"""
         if success:
-            self.status_label.setText('测试邮件发送成功')
+            self.set_status('测试邮件发送成功')
             self.logger.info("测试邮件发送成功")
             # 更新最后发送时间并启动倒计时
             EmailServer.last_test_time = time.time()
             self.test_btn.setEnabled(False)
             self.countdown_timer.start()
         else:
-            self.status_label.setText(f'测试邮件发送失败: {message}')
+            self.set_status(f'测试邮件发送失败: {message}')
             self.logger.error(f"测试邮件发送失败: {message}")
             self.test_btn.setEnabled(True)
 
@@ -751,7 +755,7 @@ class EmailSender(QMainWindow):
             self.progress_bar.setMaximum(len(self.df))
             self.progress_bar.setValue(0)
             self.progress_bar.setFormat('准备发送...')
-            self.status_label.setText('正在准备发送...')
+            self.set_status('正在准备发送...')
             
             # 禁用相关控件
             self.sender_combo.setEnabled(False)
@@ -769,17 +773,6 @@ class EmailSender(QMainWindow):
                 self.send_thread.stop()
                 self.send_thread.wait()
             
-            # 使用 QTimer 延迟创建和启动线程，确保UI更新
-            QTimer.singleShot(100, lambda: self._start_send_thread(template))
-            
-        except Exception as e:
-            self.logger.error(f"发送失败: {str(e)}")
-            self.status_label.setText(f'发送失败：{str(e)}')
-            self._reset_ui_state()
-
-    def _start_send_thread(self, template):
-        """启动发送线程"""
-        try:
             # 创建发送线程
             self.send_thread = SendEmailThread(
                 self.current_sender,
@@ -789,15 +782,14 @@ class EmailSender(QMainWindow):
             )
             
             # 连接信号
-            self.send_thread.progress_updated.connect(self.update_send_progress, Qt.QueuedConnection)
-            self.send_thread.finished.connect(self.on_send_finished, Qt.QueuedConnection)
+            self.send_thread.progress_updated.connect(self.update_send_progress)
+            self.send_thread.finished.connect(self.on_send_finished)
             
             # 启动线程
             self.send_thread.start()
             
         except Exception as e:
-            self.logger.error(f"启动发送线程失败: {str(e)}")
-            self.status_label.setText(f'启动发送失败：{str(e)}')
+            MessageBox.show('错误', f'发送失败：{str(e)}', 'error', parent=self)
             self._reset_ui_state()
 
     def _reset_ui_state(self):
@@ -813,7 +805,7 @@ class EmailSender(QMainWindow):
     def stop_sending(self):
         """停止发送"""
         if self.send_thread and self.send_thread.isRunning():
-            self.status_label.setText('正在停止发送...')
+            self.set_status('正在停止发送...')
             self.send_btn.setEnabled(False)
             self.send_thread.stop()
 
@@ -832,7 +824,8 @@ class EmailSender(QMainWindow):
                         status_item = self.log_table.item(row, 2)
                         if status_item:
                             status_item.setText(status)
-                            if '成功' in status:
+                            # 修改这里的颜色判断逻辑
+                            if status == '发送成功':  # 精确匹配"发送成功"
                                 status_item.setForeground(QBrush(QColor('#52c41a')))  # 绿色
                             else:
                                 status_item.setForeground(QBrush(QColor('#ff4d4f')))  # 红色
@@ -850,30 +843,34 @@ class EmailSender(QMainWindow):
         try:
             self._reset_ui_state()
             
-            if success:
-                self.progress_bar.setFormat('发送完成 - %p% (%v/%m)')
-                self.status_label.setText('发送完成')
-            else:
-                self.progress_bar.setFormat('发送失败 - %p% (%v/%m)')
-                self.status_label.setText(f'发送失败: {message}')
+            if not success:
+                MessageBox.show('错误', f'发送失败: {message}', 'error', parent=self)
             
-            # 记录发送批次结果
-            batch_id = f"BATCH_{datetime.now().strftime('%Y%m%d%H%M%S')}"
-            self.export_batch_result(batch_id)
+            # 弹窗提示是否需要导出发送结果
+            reply = MessageBox.question('提示', '是否需要导出发送结果？', 'info', parent=self)
+            if reply == QMessageBox.Yes:
+                if hasattr(self.send_thread, 'get_batch_id'):
+                    batch_id = self.send_thread.get_batch_id()
+                    self.export_batch_result(batch_id)
             
         except Exception as e:
-            self.logger.error(f"处理发送完成事件失败: {str(e)}")
-            self.status_label.setText(f'处理发送完成失败：{str(e)}')
+            MessageBox.show('错误', f'处理发送完成失败：{str(e)}', 'error', parent=self)
 
     def load_templates(self):
         """加载模板列表"""
-        self.template_combo.clear()
-        templates = self.db.get_templates()  # 从数据库获取模板
-        for name in templates.keys():
-            self.template_combo.addItem(name)
-        
-        # 更新预览
-        self.update_preview()
+        try:
+            self.template_combo.clear()
+            templates = self.db.get_templates()  # 从数据库获取模板
+            # 确保我们使用模板名称（字符串）作为键
+            if isinstance(templates, dict):
+                for name in templates.keys():
+                    self.template_combo.addItem(str(name))
+            
+            # 更新预览
+            self.update_preview()
+        except Exception as e:
+            self.logger.error(f"加载模板列表失败: {str(e)}")
+            self.set_status(f'加载模板列表失败: {str(e)}')
 
     def update_preview(self):
         """更新预览内容"""
@@ -907,7 +904,7 @@ class EmailSender(QMainWindow):
                 self.preview_title.setText(title)
                 self.preview_content.setHtml(content)
         except Exception as e:
-            self.status_label.setText(f'加载模板失败: {str(e)}')
+            self.set_status(f'加载模板失败: {str(e)}')
 
     def add_template(self):
         """打开添加模板对话框"""
@@ -926,7 +923,7 @@ class EmailSender(QMainWindow):
         """当选择模板时更新预览"""
         if not template_name:
             self.preview_content.clear()
-            self.status_label.setText('未选择模板')
+            self.set_status('未选择模板')
             return
         
         try:
@@ -960,9 +957,9 @@ class EmailSender(QMainWindow):
                 # 更新预览
                 self.preview_title.setText(title)
                 self.preview_content.setHtml(content)
-                self.status_label.setText(f'已加载"{template_name}"模板')
+                self.set_status(f'已加载"{template_name}"模板')
         except Exception as e:
-            self.status_label.setText(f'加载模板失败: {str(e)}')
+            self.set_status(f'加载模板失败: {str(e)}')
 
     def on_sender_changed(self, index):
         """当选择发件人时更新当前发件人信息"""
@@ -1022,7 +1019,7 @@ class EmailSender(QMainWindow):
         elif self.sender_combo.count() > 0:  # 如果没有之前选中的邮箱，选择第一个
             self.sender_combo.setCurrentIndex(0)
         else:
-            self.current_sender = None
+            self.current_sender = None  # 只有在真的没有发件人时才设为None
 
     def handle_link_click(self, url):
         """处理链接点击"""
@@ -1053,7 +1050,7 @@ class EmailSender(QMainWindow):
                     self.preview_title.setText(title)
                     self.preview_content.setHtml(content)
             except Exception as e:
-                self.status_label.setText(f'加载模板失败: {str(e)}')
+                self.set_status(f'加载模板失败: {str(e)}')
 
     def manage_mail_server(self):
         """打开邮件服务器管理对话框"""
@@ -1080,15 +1077,15 @@ class EmailSender(QMainWindow):
     def check_send_conditions(self):
         """检查发送条件"""
         if not hasattr(self, 'df') or self.df is None or len(self.df.index) == 0:
-            self.status_label.setText('请在文件菜单 - 导入Excel文件')
+            MessageBox.show('提示', '请在文件菜单 - 导入Excel文件', 'warning', parent=self)
             return False
         
         if not self.current_sender:
-            self.status_label.setText('请在工具菜单 - 发件人管理中添加发件人')
+            MessageBox.show('提示', '请在工具菜单 - 发件人管理中添加发件人', 'warning', parent=self)
             return False
 
         if not self.template_combo.currentText():
-            self.status_label.setText('请在工具菜单 - 模板管理中添加邮件模板')
+            MessageBox.show('提示', '请在工具菜单 - 模板管理中添加邮件模板', 'warning', parent=self)
             return False
 
         return True
@@ -1232,11 +1229,6 @@ class EmailSender(QMainWindow):
         progress_layout.addWidget(progress_label)
         progress_layout.addWidget(self.progress_bar)
 
-        # 状态标签
-        self.status_label = QLabel('就绪')
-        self.status_label.setObjectName('status_label')
-        self.status_label.setMinimumHeight(30)
-
         # 发送日志区域
         log_group = QWidget()
         log_group.setObjectName("groupBox")
@@ -1366,7 +1358,6 @@ class EmailSender(QMainWindow):
         left_layout.addWidget(template_group)
         left_layout.addWidget(progress_group)
         left_layout.addWidget(button_group)
-        left_layout.addWidget(self.status_label)
         left_layout.addWidget(log_group)
 
         # 使用分割器添加左右两侧
@@ -1394,8 +1385,30 @@ class EmailSender(QMainWindow):
 
         # 主布局
         main_layout = QVBoxLayout()
-        main_layout.addWidget(splitter)
-
+        main_layout.setSpacing(0)  # 设置组件间距为0
+        
+        # 创建并初始化状态标签
+        self.status_label = QLabel('就绪')
+        self.status_label.setObjectName('status_label')
+        self.status_label.setAlignment(Qt.AlignCenter)  # 居中对齐
+        self.status_label.setStyleSheet("""
+            QLabel {
+                color: #1a1a1a;
+                padding: 8px;
+                font-size: 13px;
+                min-height: 25px;
+                background-color: #e6f7ff;
+                border-top: 1px solid #91d5ff;
+                border-bottom: 1px solid #91d5ff;
+                margin: 0;
+                font-weight: 500;
+            }
+        """)
+        main_layout.addWidget(self.status_label)
+        
+        # 添加分割器
+        main_layout.addWidget(splitter, 1)  # 设置拉伸因子为1
+        
         # 添加版权信息
         copyright_bar = QWidget()
         copyright_bar.setFixedHeight(30)
@@ -1417,6 +1430,7 @@ class EmailSender(QMainWindow):
         
         # 将版权信息添加到主布局
         main_layout.addWidget(copyright_bar)
+        
         # 设置中心部件
         central_widget = QWidget()
         self.setCentralWidget(central_widget)
@@ -1489,9 +1503,9 @@ class EmailSender(QMainWindow):
             file_name = f'发送结果_{batch_id}.xlsx'
             export_df.to_excel(file_name, index=False)
             
-            self.status_label.setText(f'发送完成,结果已导出到: {file_name}')
+            MessageBox.show('成功', f'发送完成,结果已导出到: {file_name}', 'info', parent=self)
         except Exception as e:
-            self.status_label.setText(f'导出结果失败: {str(e)}')
+            MessageBox.show('错误', f'导出结果失败: {str(e)}', 'error', parent=self)
 
     def show_history(self):
         """显示历史记录对话框"""
@@ -1502,6 +1516,36 @@ class EmailSender(QMainWindow):
         """显示系统日志对话框"""
         dialog = SystemLogDialog(self)
         dialog.exec_()
+
+    def hide_status(self):
+        """隐藏状态标签"""
+        self.status_label.hide()  # 隐藏组件
+        
+    def set_status(self, message):
+        """设置状态信息并在10秒后自动隐藏
+        
+        Args:
+            message: 要显示的状态信息
+        """
+        self.status_label.setText(message)
+        self.status_label.setStyleSheet("""
+            QLabel {
+                color: #1a1a1a;
+                padding: 8px;
+                font-size: 13px;
+                min-height: 25px;
+                background-color: #e6f7ff;
+                border-top: 1px solid #91d5ff;
+                border-bottom: 1px solid #91d5ff;
+                margin: 0;
+                font-weight: 500;
+            }
+        """)
+        self.status_label.show()  # 确保标签可见
+        
+        # 重置并启动计时器
+        self.status_timer.stop()
+        self.status_timer.start(10000)  # 10秒后自动隐藏
 
 class TestEmailThread(QThread):
     """测试邮件发送线程"""
@@ -1564,6 +1608,8 @@ class SendEmailThread(QThread):
         self.server = None
         self.task_queue = Queue()
         self.result_queue = Queue()
+        self.batch_id = f"BATCH_{datetime.now().strftime('%Y%m%d%H%M%S')}"  # 添加批次ID
+        self.db = Database()  # 添加数据库实例
         
     def run(self):
         """运行发送任务"""
@@ -1616,10 +1662,8 @@ class SendEmailThread(QThread):
             
             while self.is_running:
                 try:
-                    # 获取任务，设置超时以便检查停止标志
-                    index, row = self.task_queue.get_nowait()  # 改用 get_nowait
-                except Queue.Empty:
-                    # 如果队列为空，说明任务完成
+                    index, row = self.task_queue.get_nowait()
+                except Empty:
                     break
                 
                 try:
@@ -1645,6 +1689,17 @@ class SendEmailThread(QThread):
                     status = '发送成功' if success else f'发送失败: {message}'
                     self.progress_updated.emit(index + 1, status, message if not success else '')
                     
+                    # 记录发送日志到数据库
+                    self.db.add_send_log(
+                        batch_id=self.batch_id,
+                        sender_email=self.sender['email'],
+                        recipient_email=row['收件人邮箱'],
+                        recipient_name=row['姓名'],
+                        subject=title,
+                        status=status,
+                        error_message=message if not success else None
+                    )
+                    
                     # 记录结果
                     self.result_queue.put((success, message))
                     
@@ -1655,8 +1710,21 @@ class SendEmailThread(QThread):
                     QThread.msleep(100)
                     
                 except Exception as e:
-                    self.progress_updated.emit(index + 1, f'发送失败: {str(e)}', str(e))
-                    self.result_queue.put((False, str(e)))
+                    error_msg = str(e)
+                    self.progress_updated.emit(index + 1, f'发送失败: {error_msg}', error_msg)
+                    
+                    # 记录错误到数据库
+                    self.db.add_send_log(
+                        batch_id=self.batch_id,
+                        sender_email=self.sender['email'],
+                        recipient_email=row['收件人邮箱'],
+                        recipient_name=row['姓名'],
+                        subject=title,
+                        status='发送失败',
+                        error_message=error_msg
+                    )
+                    
+                    self.result_queue.put((False, error_msg))
                     self.task_queue.task_done()
                     QThread.msleep(200)
             
@@ -1667,22 +1735,9 @@ class SendEmailThread(QThread):
                 except:
                     pass
     
-    def stop(self):
-        """停止发送"""
-        self.is_running = False
-        # 清空任务队列
-        while not self.task_queue.empty():
-            try:
-                self.task_queue.get_nowait()
-                self.task_queue.task_done()
-            except:
-                pass
-        # 关闭服务器连接
-        if self.server:
-            try:
-                self.server.close()
-            except:
-                pass
+    def get_batch_id(self):
+        """获取当前批次ID"""
+        return self.batch_id
 
 class AttachmentDialog(QDialog):
     """附件管理对话框"""

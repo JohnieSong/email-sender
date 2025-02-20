@@ -57,4 +57,40 @@ class MessageBox:
             [('确定', QMessageBox.AcceptRole), ('取消', QMessageBox.RejectRole)],
             parent=parent
         )
-        return reply == 0  # 0 表示点击了第一个按钮（确定） 
+        return reply == 0  # 0 表示点击了第一个按钮（确定）
+
+    @staticmethod
+    def question(title, message, type='info', parent=None):
+        """显示询问消息框
+        
+        Args:
+            title: 标题
+            message: 消息内容 
+            type: 消息类型 (info/warning/error/critical)
+            parent: 父窗口
+            
+        Returns:
+            QMessageBox.Yes 或 QMessageBox.No
+        """
+        msg = QMessageBox(parent)
+        msg.setWindowTitle(title)
+        msg.setText(message)
+        
+        # 使用标准按钮
+        msg.setStandardButtons(QMessageBox.Yes | QMessageBox.No)
+        msg.setDefaultButton(QMessageBox.No)
+        
+        # 设置按钮文本为中文
+        msg.button(QMessageBox.Yes).setText('确定')
+        msg.button(QMessageBox.No).setText('取消')
+        
+        if type == 'info':
+            msg.setIcon(QMessageBox.Information)
+        elif type == 'warning':
+            msg.setIcon(QMessageBox.Warning)
+        elif type == 'error':
+            msg.setIcon(QMessageBox.Critical)
+        elif type == 'critical':
+            msg.setIcon(QMessageBox.Critical)
+            
+        return msg.exec_()

@@ -50,7 +50,7 @@ class SystemLogDialog(QDialog):
         
         # 日志级别选择
         self.level_combo = QComboBox()
-        self.level_combo.addItems(['全部', 'DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL'])
+        self.level_combo.addItems(['全部', '调试', '信息', '警告', '错误', '严重'])
         self.level_combo.setFixedWidth(100)  # 设置固定宽度
         
         level_layout.addWidget(QLabel('日志级别:'))
@@ -161,7 +161,17 @@ class SystemLogDialog(QDialog):
             start_date = self.start_date.date().toString('yyyy-MM-dd')
             end_date = self.end_date.date().toString('yyyy-MM-dd')
             level = self.level_combo.currentText()
-            level = None if level == '全部' else level
+            
+            # 中文日志级别映射到英文
+            level_map = {
+                '全部': None,
+                '调试': 'DEBUG',
+                '信息': 'INFO',
+                '警告': 'WARNING',
+                '错误': 'ERROR',
+                '严重': 'CRITICAL'
+            }
+            level = level_map.get(level)
             
             logs = self.db.get_system_logs(start_date=start_date, end_date=end_date, level=level)
             self.log_table.setRowCount(0)
@@ -175,6 +185,15 @@ class SystemLogDialog(QDialog):
                 'CRITICAL': '#dc3545'  # 红色
             }
             
+            # 英文日志级别映射到中文
+            level_display = {
+                'DEBUG': '调试',
+                'INFO': '信息',
+                'WARNING': '警告',
+                'ERROR': '错误',
+                'CRITICAL': '严重'
+            }
+            
             for log in logs:
                 row = self.log_table.rowCount()
                 self.log_table.insertRow(row)
@@ -182,10 +201,14 @@ class SystemLogDialog(QDialog):
                 # 格式化日志内容
                 message = f"[{log[3]}:{log[4]}] - {log[5]}"  # filename:line_number - message
                 
+                # 获取日志级别的中文显示
+                level = str(log[2])
+                level_zh = level_display.get(level, level)
+                
                 # 创建表格项并设置对齐
                 items = [
                     QTableWidgetItem(str(log[1])),  # timestamp
-                    QTableWidgetItem(str(log[2])),  # level
+                    QTableWidgetItem(level_zh),     # level in Chinese
                     QTableWidgetItem(message)       # formatted message
                 ]
                 

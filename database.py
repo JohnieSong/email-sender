@@ -286,16 +286,25 @@ class Database:
         return True
 
     def get_templates(self):
-        """获取所有模板"""
-        cursor = self.conn.cursor()
-        cursor.execute('SELECT name, title, content FROM templates')
-        templates = {}
-        for row in cursor.fetchall():
-            templates[row[0]] = {
-                'title': row[1],
-                'content': row[2]
-            }
-        return templates
+        """获取所有模板
+        
+        Returns:
+            dict: 以模板名称为键，包含标题和内容的字典为值的字典
+        """
+        try:
+            cursor = self.conn.cursor()
+            cursor.execute('SELECT name, title, content FROM templates')
+            templates = {}
+            for row in cursor.fetchall():
+                name = str(row[0])  # 确保名称是字符串
+                templates[name] = {
+                    'title': row[1],
+                    'content': row[2]
+                }
+            return templates
+        except Exception as e:
+            print(f"获取模板失败: {str(e)}")
+            return {}
 
     def add_template(self, name, title, content):
         """添加或更新模板"""
