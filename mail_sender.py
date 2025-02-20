@@ -1388,7 +1388,7 @@ class EmailSender(QMainWindow):
         main_layout.setSpacing(0)  # 设置组件间距为0
         
         # 创建并初始化状态标签
-        self.status_label = QLabel('就绪')
+        self.status_label = QLabel('欢迎使用邮件批量发送工具，请配置相关参数后开始使用')
         self.status_label.setObjectName('status_label')
         self.status_label.setAlignment(Qt.AlignCenter)  # 居中对齐
         self.status_label.setStyleSheet("""
