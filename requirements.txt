@@ -22,3 +22,6 @@ pywin32>=305  # 添加 pywin32 依赖
 
 # 打包工具依赖（开发时需要）
 pyinstaller>=5.0.0  # 备选打包工具
+
+# 添加 chardet 依赖
+chardet

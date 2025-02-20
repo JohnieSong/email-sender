@@ -12,6 +12,14 @@ def get_resource_path(relative_path):
         return os.path.join(sys._MEIPASS, relative_path)
     return os.path.join(os.path.abspath("."), relative_path)
 
+def get_version():
+    """获取版本号"""
+    try:
+        with open(get_resource_path('app_version.txt'), 'r') as f:
+            return f.read().strip()
+    except:
+        return "1.2.5"  # 默认版本号
+
 class AboutDialog(QDialog):
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -52,7 +60,7 @@ class AboutDialog(QDialog):
                 font-weight: bold;
             }
         """)
-        version_label = QLabel("版本 1.2.5")
+        version_label = QLabel(f"版本 {get_version()}")
         version_label.setStyleSheet("color: #666666;")
         
         title_version_layout.addWidget(title_label)

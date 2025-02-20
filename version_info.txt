@@ -24,9 +24,9 @@ VSVersionInfo(
             StringStruct(u'FileDescription', u'邮件批量发送工具'),                           # 文件说明
             StringStruct(u'FileVersion', u'1.2.5.0'),                                   # 文件版本
             StringStruct(u'ProductName', u'邮件批量发送工具'),                               # 产品名称
-            StringStruct(u'CompanyName', u'BJ·BBRHub'),                       # 公司名称
+            StringStruct(u'CompanyName', u'BBRHub'),                       # 公司名称
             StringStruct(u'ProductVersion', u'1.2.5.0'),                                # 产品版本
-            StringStruct(u'LegalCopyright', u'Copyright ©2025 BJ·BBRHub Inc. ')  # 版权信息
+            StringStruct(u'LegalCopyright', u'Copyright ©2025 BBRHub Inc. ')  # 版权信息
           ]
         )
       ]

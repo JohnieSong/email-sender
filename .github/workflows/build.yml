@@ -42,7 +42,15 @@ jobs:
     - name: Verify Required Files
       run: |
         Write-Host "Checking required files..."
-        Get-ChildItem -Recurse | Select-Object FullName  # 显示所有文件
+        Get-ChildItem -Recurse | Select-Object FullName
+        if (-not (Test-Path "version_info.txt")) {
+          Write-Error "Error: version_info.txt not found"
+          exit 1
+        }
+        if (-not (Test-Path "app_version.txt")) {
+          Write-Error "Error: app_version.txt not found"
+          exit 1
+        }
         if (-not (Test-Path "mail_sender.py")) {
           Write-Error "Error: mail_sender.py not found"
           exit 1
@@ -67,6 +75,8 @@ jobs:
           --add-data "styles.py;." `
           --add-data "database.py;." `
           --add-data "email_utils.py;." `
+          --add-data "app_version.txt;." `
+          --version-file version_info.txt `
           --icon=imgs/logo.ico `
           --name email-sender `
           --clean `
@@ -118,6 +128,8 @@ jobs:
           dist/email-sender.exe
           README.md
           CHANGELOG.md
+          version_info.txt
+          app_version.txt
         body_path: CHANGELOG.md
         draft: false
         prerelease: false
