@@ -158,13 +158,13 @@ class Config:
             config.read(self.ini_file, encoding='utf-8')
             
             # 检查 Test 部分是否存在
-            if not config.has_section('Test'):
+            if not config.has_section('Testdata'):
                 MessageBox.show_error("测试配置不存在")
                 return None
             
             # 获取所有测试数据
             test_data = {}
-            for key, value in config['Test'].items():
+            for key, value in config['Testdata'].items():
                 test_data[key] = value
             
             return test_data
@@ -190,12 +190,12 @@ class Config:
                 config.read(self.ini_file, encoding='utf-8')
             
             # 确保 Test 部分存在
-            if not config.has_section('Test'):
-                config.add_section('Test')
+            if not config.has_section('Testdata'):
+                config.add_section('Testdata')
             
             # 更新测试数据
             for key, value in data.items():
-                config['Test'][key] = str(value)
+                config['Testdata'][key] = str(value)
             
             # 保存到文件
             with open(self.ini_file, 'w', encoding='utf-8') as f:
@@ -276,11 +276,11 @@ class Config:
                         return False
                         
                     config = configparser.ConfigParser()
-                    config['Test'] = {
-                        'test_sender': '',
-                        'test_recipient': '',
-                        'test_subject': '',
-                        'test_content': ''
+                    config['Testdata'] = {
+                        '姓名': '',
+                        '邮箱': '',
+                        '主题': '',
+                        '内容': ''
                     }
                     with open(self.ini_file, 'w', encoding='utf-8') as f:
                         config.write(f)
