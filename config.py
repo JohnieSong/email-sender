@@ -103,9 +103,19 @@ class Config:
         """获取发件人列表"""
         return self.db.get_sender_list()
 
-    def add_sender(self, email, password, server_type='QQ企业邮箱'):
-        """添加发件人"""
-        return self.db.add_sender(email, password, server_type)
+    def add_sender(self, email, password, server_type='QQ企业邮箱', nickname=None):
+        """添加发件人
+        
+        Args:
+            email: 邮箱地址
+            password: 授权码
+            server_type: 邮箱类型，默认为QQ企业邮箱
+            nickname: 发件人昵称，可选
+            
+        Returns:
+            bool: 是否添加成功
+        """
+        return self.db.add_sender(email, password, server_type, nickname)
 
     def remove_sender(self, email):
         """删除发件人"""

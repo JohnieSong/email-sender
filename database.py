@@ -50,7 +50,8 @@ class Database:
                 CREATE TABLE IF NOT EXISTS senders (
                     email TEXT PRIMARY KEY,
                     password TEXT NOT NULL,
-                    server_type TEXT NOT NULL
+                    server_type TEXT NOT NULL,
+                    nickname TEXT
                 )
             ''')
 
@@ -255,24 +256,25 @@ class Database:
     def get_sender_list(self):
         """获取发件人列表"""
         cursor = self.conn.cursor()
-        cursor.execute('SELECT email, password, server_type FROM senders')
+        cursor.execute('SELECT email, password, server_type, nickname FROM senders')
         senders = []
         for row in cursor.fetchall():
             senders.append({
                 'email': row[0],
                 'password': self.crypto.decrypt(row[1]),
-                'server_type': row[2]
+                'server_type': row[2],
+                'nickname': row[3]
             })
         return senders
 
-    def add_sender(self, email, password, server_type='QQ企业邮箱'):
+    def add_sender(self, email, password, server_type='QQ企业邮箱', nickname=None):
         """添加或更新发件人"""
         cursor = self.conn.cursor()
         encrypted_password = self.crypto.encrypt(password)
         cursor.execute('''
-            INSERT OR REPLACE INTO senders (email, password, server_type)
-            VALUES (?, ?, ?)
-        ''', (email, encrypted_password, server_type))
+            INSERT OR REPLACE INTO senders (email, password, server_type, nickname)
+            VALUES (?, ?, ?, ?)
+        ''', (email, encrypted_password, server_type, nickname))
         self.conn.commit()
         return True
 

@@ -3,8 +3,18 @@ from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from email.header import Header
 import re
+import os
+import time
+from email.mime.application import MIMEApplication
 
 class EmailServer:
+    # 添加附件大小限制常量（20MB）
+    MAX_ATTACHMENT_SIZE = 25 * 1024 * 1024  # 20MB in bytes
+    # 添加测试邮件发送间隔（60秒）
+    TEST_EMAIL_INTERVAL = 60  # 秒
+    # 添加类属性来跟踪最后发送时间
+    last_test_time = 0  # 初始化为0
+    
     def __init__(self, email, password, server_type=None):
         from database import Database
         self.db = Database()
@@ -70,25 +80,90 @@ class EmailServer:
         except Exception as e:
             raise ValueError(f'连接服务器失败: {str(e)}')
 
-    def send_email(self, to_email, subject, content):
+    def send_email(self, to_email, subject, content, attachments=None):
         """发送邮件"""
         if not self.server:
             self.connect()
             
-        msg = MIMEMultipart('alternative')  # 使用 alternative 类型
-        msg['From'] = self.email
+        # 创建一个带附件的邮件实例
+        msg = MIMEMultipart()  # 使用默认的 mixed 类型
+        
+        # 获取发件人昵称
+        senders = self.db.get_sender_list()
+        sender_info = None
+        for sender in senders:
+            if sender['email'] == self.email:
+                sender_info = sender
+                break
+            
+        # 设置发件人显示格式
+        if sender_info and sender_info.get('nickname'):
+            from_addr = f"{sender_info['nickname']} <{self.email}>"
+        else:
+            from_addr = self.email
+        
+        msg['From'] = from_addr
         msg['To'] = to_email
         msg['Subject'] = Header(subject, 'utf-8')
+        msg['Message-ID'] = f"<{int(time.time())}@{self.email.split('@')[1]}>"
+        
+        # 创建alternative部分来包含纯文本和HTML内容
+        alt_part = MIMEMultipart('alternative')
         
         # 添加纯文本和HTML两种格式
         text_part = MIMEText(self._html_to_text(content), 'plain', 'utf-8')
         html_part = MIMEText(content, 'html', 'utf-8')
         
-        msg.attach(text_part)
-        msg.attach(html_part)  # HTML 部分会被优先显示
+        alt_part.attach(text_part)
+        alt_part.attach(html_part)
+        
+        # 将alternative部分添加到邮件主体
+        msg.attach(alt_part)
+
+        # 如果有附件，添加到邮件中
+        if attachments:
+            total_size = 0
+            for file_path in attachments:
+                try:
+                    # 检查文件大小
+                    file_size = os.path.getsize(file_path)
+                    total_size += file_size
+                    
+                    if file_size > self.MAX_ATTACHMENT_SIZE:
+                        raise ValueError(f"单个附件大小超过限制(25MB): {os.path.basename(file_path)}")
+                        
+                    if total_size > self.MAX_ATTACHMENT_SIZE:
+                        raise ValueError(f"附件总大小超过限制(25MB)")
+                        
+                    # 获取文件名和扩展名
+                    filename = os.path.basename(file_path)
+                    file_ext = os.path.splitext(filename)[1].lower()
+                    
+                    # 读取文件内容
+                    with open(file_path, 'rb') as f:
+                        attachment = f.read()
+                    
+                    # 根据文件扩展名设置正确的 MIME 类型
+                    mime_type = self._get_mime_type(file_ext)
+                    
+                    # 创建附件部分
+                    part = MIMEApplication(attachment)
+                    
+                    # 设置附件头部信息
+                    part.add_header('Content-Disposition', 'attachment', 
+                                  filename=('utf-8', '', filename))
+                    part.add_header('Content-Type', f'application/octet-stream; name="{filename}"')
+                    
+                    msg.attach(part)
+                    
+                except OSError as e:
+                    raise ValueError(f"读取附件失败: {file_path} - {str(e)}")
+                except Exception as e:
+                    raise ValueError(f"添加附件失败: {file_path} - {str(e)}")
 
         try:
             self.server.send_message(msg)
+            self.server.noop()  # 确保邮件发送完成
             return True, "发送成功"
         except Exception as e:
             return False, str(e)
@@ -108,3 +183,25 @@ class EmailServer:
         """关闭连接"""
         if self.server:
             self.server.quit()
+    #         self.close()
+
+    def _get_mime_type(self, file_ext):
+        """根据文件扩展名获取 MIME 类型"""
+        mime_types = {
+            '.pdf': 'pdf',
+            '.doc': 'msword',
+            '.docx': 'vnd.openxmlformats-officedocument.wordprocessingml.document',
+            '.xls': 'vnd.ms-excel',
+            '.xlsx': 'vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            '.ppt': 'vnd.ms-powerpoint',
+            '.pptx': 'vnd.openxmlformats-officedocument.presentationml.presentation',
+            '.jpg': 'jpeg',
+            '.jpeg': 'jpeg',
+            '.png': 'png',
+            '.gif': 'gif',
+            '.zip': 'zip',
+            '.rar': 'x-rar-compressed',
+            '.7z': 'x-7z-compressed',
+            '.txt': 'plain',
+        }
+        return mime_types.get(file_ext, 'octet-stream')

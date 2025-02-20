@@ -1,6 +1,6 @@
 from PyQt5.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QLabel, 
                             QLineEdit, QTextEdit, QPushButton, QMessageBox,
-                            QListWidget, QSplitter, QWidget, QToolButton, QMenu, QTextBrowser, QFileDialog)
+                            QListWidget, QSplitter, QWidget, QToolButton, QMenu, QTextBrowser, QFileDialog, QInputDialog)
 from PyQt5.QtCore import Qt, pyqtSignal
 from PyQt5.QtGui import QFont
 import json
@@ -9,6 +9,10 @@ from message_box import MessageBox
 from styles import MODERN_STYLE  # 添加到导入部分
 from database import Database
 from config import Config
+from email import message_from_file
+import email.policy
+from email.header import Header
+from bs4 import BeautifulSoup
 
 class TemplateDialog(QDialog):
     # 添加信号
@@ -52,24 +56,32 @@ class TemplateDialog(QDialog):
         self.template_list.itemSelectionChanged.connect(self.on_selection_changed)
         
         # 模板操作按钮
-        list_buttons = QHBoxLayout()
-        new_btn = QPushButton('新建')
-        new_btn.clicked.connect(self.new_template)
+        btn_layout = QHBoxLayout()
+        
+        # 创建按钮
+        add_btn = QPushButton('添加')
         import_btn = QPushButton('导入')
-        import_btn.clicked.connect(self.import_template)
-        export_btn = QPushButton('导出')
-        export_btn.clicked.connect(self.export_template)
+        export_btn = QPushButton('导出')  # 将修改按钮改为导出按钮
         delete_btn = QPushButton('删除')
+        
+        # 连接按钮事件
+        add_btn.clicked.connect(self.add_template)
+        import_btn.clicked.connect(self.import_template)
+        export_btn.clicked.connect(self.export_template)  # 连接导出事件
         delete_btn.clicked.connect(self.delete_template)
-        list_buttons.addWidget(new_btn)
-        list_buttons.addWidget(import_btn)
-        list_buttons.addWidget(export_btn)
-        list_buttons.addWidget(delete_btn)
+        
+        # 将按钮添加到布局中
+        btn_layout.addStretch()
+        btn_layout.addWidget(add_btn)
+        btn_layout.addWidget(import_btn)
+        btn_layout.addWidget(export_btn)  # 添加导出按钮
+        btn_layout.addWidget(delete_btn)
+        btn_layout.addStretch()
         
         # 添加组件到左侧布局
         left_layout.addWidget(QLabel('已保存的模板:'))
         left_layout.addWidget(self.template_list)
-        left_layout.addLayout(list_buttons)
+        left_layout.addLayout(btn_layout)
         
         # 右侧编辑区域
         right_widget = QWidget()
@@ -218,7 +230,7 @@ class TemplateDialog(QDialog):
         except Exception as e:
             MessageBox.show('错误', f'保存失败：{str(e)}', 'critical', parent=self)
 
-    def new_template(self):
+    def add_template(self):
         """新建模板"""
         self.current_template = None
         self.name_input.clear()
@@ -251,7 +263,7 @@ class TemplateDialog(QDialog):
                 self.load_template_list()
                 
                 # 清空编辑区域
-                self.new_template()
+                self.add_template()
                 
                 self.template_updated.emit()
                 MessageBox.show('成功', f'模板"{template_name}"已删除', 'info', parent=self)
@@ -314,69 +326,98 @@ class TemplateDialog(QDialog):
         """导入模板"""
         file_name, _ = QFileDialog.getOpenFileName(
             self,
-            "选择模板文件",
+            "导入模板",
             "",
-            "JSON Files (*.json);;All Files (*)"
+            "所有支持的格式 (*.eml *.html *.htm *.mht *.txt *.json);;EML文件 (*.eml);;HTML文件 (*.html *.htm);;MHT文件 (*.mht);;文本文件 (*.txt);;JSON文件 (*.json)"
         )
         
         if not file_name:
             return
         
         try:
-            with open(file_name, 'r', encoding='utf-8') as f:
-                imported_templates = json.load(f)
+            # 获取文件扩展名
+            ext = os.path.splitext(file_name)[1].lower()
+            
+            if ext == '.json':
+                self._import_json_template(file_name)
+            else:
+                self._import_mail_template(file_name, ext)
+            
+        except Exception as e:
+            MessageBox.show(
+                '错误',
+                f'导入失败：{str(e)}',
+                'critical',
+                parent=self
+            )
+
+    def _import_json_template(self, file_path):
+        """导入JSON格式的模板"""
+        with open(file_path, 'r', encoding='utf-8') as f:
+            templates = json.load(f)
+            
+        if not isinstance(templates, dict):
+            raise ValueError('无效的模板文件格式')
+            
+        # 检查并导入模板
+        for name, template in templates.items():
+            if not isinstance(template, dict) or 'title' not in template or 'content' not in template:
+                raise ValueError(f'模板"{name}"格式无效')
                 
-            if not isinstance(imported_templates, dict):
-                MessageBox.show('错误', '无效的模板文件格式', 'warning', parent=self)
-                return
-                
-            # 检查模板格式
-            for name, template in imported_templates.items():
-                if not isinstance(template, dict) or 'title' not in template or 'content' not in template:
-                    MessageBox.show('错误', f'模板"{name}"格式无效', 'warning', parent=self)
-                    return
-            
-            # 确认是否覆盖已存在的模板
-            existing_templates = set(self.templates.keys()) & set(imported_templates.keys())
-            if existing_templates:
-                reply = MessageBox.show(
-                    '确认导入',
-                    f'以下模板已存在，是否覆盖？\n{", ".join(existing_templates)}',
-                    'question',
-                    [('是', QMessageBox.AcceptRole), ('否', QMessageBox.RejectRole)],
-                    parent=self
-                )
-                if reply != 0:  # 用户选择不覆盖
-                    return
-            
-            # 导入模板
-            for name, template in imported_templates.items():
-                self.db.add_template(name, template['title'], template['content'])
-            
-            # 重新加载模板列表
+            self.db.add_template(name, template['title'], template['content'])
+        
+        # 重新加载模板列表
+        self.templates = self.load_templates()
+        self.load_template_list()
+        
+        # 发送模板更新信号
+        self.template_updated.emit()
+        
+        MessageBox.show(
+            '成功',
+            f'已导入 {len(templates)} 个模板',
+            'info',
+            parent=self
+        )
+
+    def _import_mail_template(self, file_path, ext):
+        """导入邮件格式的模板"""
+        if ext == '.eml':
+            subject, content = self._parse_eml_file(file_path)
+        elif ext in ['.html', '.htm']:
+            subject, content = self._parse_html_file(file_path)
+        elif ext == '.mht':
+            subject, content = self._parse_mht_file(file_path)
+        else:  # .txt
+            with open(file_path, 'r', encoding='utf-8') as f:
+                content = f.read()
+            subject = os.path.splitext(os.path.basename(file_path))[0]
+        
+        # 使用文件名作为默认模板名称
+        template_name = os.path.splitext(os.path.basename(file_path))[0]
+        
+        # 弹出对话框让用户确认或修改模板名称
+        template_name, ok = QInputDialog.getText(
+            self,
+            '保存模板',
+            '请输入模板名称:',
+            text=template_name
+        )
+        
+        if ok and template_name:
+            self.db.add_template(template_name, subject, content)
             self.templates = self.load_templates()
             self.load_template_list()
             
-            # 选中第一个导入的模板
-            if imported_templates:
-                first_template = list(imported_templates.keys())[0]
-                items = self.template_list.findItems(first_template, Qt.MatchExactly)
-                if items:
-                    self.template_list.setCurrentItem(items[0])
-            
+            # 发送模板更新信号
             self.template_updated.emit()
             
             MessageBox.show(
-                '成功', 
-                f'已导入 {len(imported_templates)} 个模板', 
-                'info', 
+                '成功',
+                '模板导入成功',
+                'info',
                 parent=self
             )
-            
-        except json.JSONDecodeError:
-            MessageBox.show('错误', '无效的JSON文件', 'critical', parent=self)
-        except Exception as e:
-            MessageBox.show('错误', f'导入失败：{str(e)}', 'critical', parent=self)
 
     def show_var_menu(self):
         """显示变量菜单"""
@@ -487,51 +528,56 @@ class TemplateDialog(QDialog):
         """导出选中的模板"""
         selected_items = self.template_list.selectedItems()
         if not selected_items:
-            MessageBox.show('提示', '请按住 Ctrl 键或按住 Shift 键点击选择要导出的模板', 'warning', parent=self)
+            MessageBox.show('提示', '请选择要导出的模板', 'warning', parent=self)
             return
         
-        # 如果只选择了一个模板，使用模板名作为默认文件名
-        if len(selected_items) == 1:
-            default_filename = f"{selected_items[0].text()}.json"
-        else:
-            default_filename = "templates.json"
+        # 获取选中的模板数据
+        export_templates = {}
+        for item in selected_items:
+            template_name = item.text()
+            template = self.templates.get(template_name)
+            if template:
+                export_templates[template_name] = template
         
-        # 获取保存文件路径
-        file_name, _ = QFileDialog.getSaveFileName(
+        if not export_templates:
+            return
+        
+        # 根据选中数量决定可用的导出格式
+        if len(export_templates) == 1:
+            # 单个模板可以导出所有格式
+            filter_str = "JSON文件 (*.json);;HTML文件 (*.html);;HTM文件 (*.htm);;MHT文件 (*.mht);;EML文件 (*.eml);;文本文件 (*.txt)"
+        else:
+            # 多个模板只能导出部分格式
+            filter_str = "JSON文件 (*.json);;HTML文件 (*.html);;HTM文件 (*.htm);;文本文件 (*.txt)"
+        
+        # 选择导出格式和文件名
+        default_name = list(export_templates.keys())[0] if len(export_templates) == 1 else 'templates'
+        file_name, selected_filter = QFileDialog.getSaveFileName(
             self,
             "导出模板",
-            default_filename,
-            "JSON Files (*.json);;All Files (*)"
+            default_name,
+            filter_str
         )
         
         if not file_name:
             return
         
         try:
-            # 创建导出数据
-            export_data = {}
-            for item in selected_items:
-                template_name = item.text()
-                template = self.templates.get(template_name)
-                if template:
-                    export_data[template_name] = {
-                        'title': template['title'],
-                        'content': template['content']
-                    }
-            
-            # 写入文件
-            with open(file_name, 'w', encoding='utf-8') as f:
-                json.dump(export_data, f, ensure_ascii=False, indent=4)
-            
-            # 根据导出的模板数量显示不同的成功消息
-            if len(export_data) == 1:
-                message = f'模板"{list(export_data.keys())[0]}"已导出到：\n{file_name}'
-            else:
-                message = f'已成功导出 {len(export_data)} 个模板到：\n{file_name}'
+            # 根据选择的格式导出
+            if selected_filter == 'JSON文件 (*.json)':
+                self._export_json_template(file_name, export_templates)
+            elif selected_filter in ['HTML文件 (*.html)', 'HTM文件 (*.htm)']:
+                self._export_html_template(file_name, export_templates)
+            elif selected_filter == 'MHT文件 (*.mht)':
+                self._export_mht_template(file_name, export_templates)
+            elif selected_filter == 'EML文件 (*.eml)':
+                self._export_eml_template(file_name, export_templates)
+            else:  # 文本文件
+                self._export_text_template(file_name, export_templates)
             
             MessageBox.show(
                 '成功',
-                message,
+                f'已导出 {len(export_templates)} 个模板',
                 'info',
                 parent=self
             )
@@ -543,6 +589,76 @@ class TemplateDialog(QDialog):
                 'critical',
                 parent=self
             )
+
+    def _export_json_template(self, file_path, templates):
+        """导出为JSON格式"""
+        with open(file_path, 'w', encoding='utf-8') as f:
+            json.dump(templates, f, ensure_ascii=False, indent=4)
+
+    def _export_html_template(self, file_path, templates):
+        """导出为HTML格式"""
+        html_content = []
+        for name, template in templates.items():
+            html_content.append(f'<h1>{template["title"]}</h1>')
+            html_content.append(template["content"])
+            html_content.append('<hr>')
+        
+        with open(file_path, 'w', encoding='utf-8') as f:
+            f.write('\n'.join(html_content))
+
+    def _export_eml_template(self, file_path, templates):
+        """导出为EML格式"""
+        from email.mime.text import MIMEText
+        from email.mime.multipart import MIMEMultipart
+        
+        for name, template in templates.items():
+            msg = MIMEMultipart('alternative')
+            msg['Subject'] = template['title']
+            msg['From'] = "template@example.com"
+            msg['To'] = "recipient@example.com"
+            
+            html_part = MIMEText(template['content'], 'html', 'utf-8')
+            msg.attach(html_part)
+            
+            with open(file_path, 'w', encoding='utf-8') as f:
+                f.write(msg.as_string())
+            break  # EML格式只导出第一个模板
+
+    def _export_text_template(self, file_path, templates):
+        """导出为文本格式"""
+        text_content = []
+        for name, template in templates.items():
+            text_content.append(f'标题: {template["title"]}')
+            text_content.append('内容:')
+            text_content.append(template["content"])
+            text_content.append('-' * 50)
+        
+        with open(file_path, 'w', encoding='utf-8') as f:
+            f.write('\n'.join(text_content))
+
+    def _export_mht_template(self, file_path, templates):
+        """导出为MHT格式"""
+        from email.mime.text import MIMEText
+        from email.mime.multipart import MIMEMultipart
+        from email.generator import Generator
+        import datetime
+        
+        for name, template in templates.items():
+            msg = MIMEMultipart('related')
+            msg['Subject'] = template['title']
+            msg['From'] = "template@example.com"
+            msg['To'] = "recipient@example.com"
+            msg['Date'] = datetime.datetime.now().strftime("%a, %d %b %Y %H:%M:%S +0000")
+            msg['MIME-Version'] = '1.0'
+            msg['Content-Type'] = 'multipart/related'
+            
+            html_part = MIMEText(template['content'], 'html', 'utf-8')
+            msg.attach(html_part)
+            
+            with open(file_path, 'w', encoding='utf-8') as f:
+                gen = Generator(f)
+                gen.flatten(msg)
+            break  # MHT格式只导出第一个模板
 
     def preview_template(self, template_name):
         """当选择模板时更新预览"""
@@ -586,4 +702,85 @@ class TemplateDialog(QDialog):
                 self.status_label.setText(f'已加载"{template_name}"模板')
         except Exception as e:
             self.status_label.setText(f'加载模板失败: {str(e)}')
-            print(f"加载模板失败: {str(e)}") 
+            print(f"加载模板失败: {str(e)}")
+
+    def edit_template(self):
+        """编辑当前选中的模板"""
+        current_item = self.template_list.currentItem()
+        if not current_item:
+            MessageBox.show('提示', '请先选择要修改的模板', 'warning', parent=self)
+            return
+        
+        template_name = current_item.text()
+        template = self.templates.get(template_name)
+        if template:
+            self.current_template = template_name
+            self.name_input.setText(template_name)
+            self.title_input.setText(template['title'])
+            self.content_edit.setHtml(template['content'])
+            self.name_input.setFocus() 
+
+    def _parse_eml_file(self, file_path):
+        """解析EML文件"""
+        with open(file_path, 'r', encoding='utf-8') as f:
+            msg = message_from_file(f, policy=email.policy.default)
+        
+        # 获取主题
+        subject = msg.get('subject', '')
+        if subject.startswith('=?'):  # 处理编码的主题
+            subject = str(Header.make_header(Header.decode_header(subject)))
+        
+        # 获取内容
+        content = ''
+        if msg.is_multipart():
+            for part in msg.walk():
+                if part.get_content_type() == 'text/html':
+                    content = part.get_payload(decode=True).decode(part.get_content_charset() or 'utf-8')
+                    break
+            if not content:  # 如果没有HTML内容,尝试获取纯文本
+                for part in msg.walk():
+                    if part.get_content_type() == 'text/plain':
+                        content = part.get_payload(decode=True).decode(part.get_content_charset() or 'utf-8')
+                        break
+        else:
+            content = msg.get_payload(decode=True).decode(msg.get_content_charset() or 'utf-8')
+        
+        return subject, content
+
+    def _parse_html_file(self, file_path):
+        """解析HTML文件"""
+        from bs4 import BeautifulSoup
+        
+        with open(file_path, 'r', encoding='utf-8') as f:
+            soup = BeautifulSoup(f.read(), 'html.parser')
+        
+        # 尝试从title标签获取主题
+        title = soup.title.string if soup.title else ''
+        if not title:
+            title = os.path.splitext(os.path.basename(file_path))[0]
+        
+        # 获取完整HTML内容
+        content = str(soup)
+        
+        return title, content
+
+    def _parse_mht_file(self, file_path):
+        """解析MHT文件"""
+        with open(file_path, 'r', encoding='utf-8') as f:
+            msg = message_from_file(f, policy=email.policy.default)
+        
+        # 获取主题
+        subject = msg.get('subject', '')
+        if subject.startswith('=?'):
+            subject = str(Header.make_header(Header.decode_header(subject)))
+        if not subject:
+            subject = os.path.splitext(os.path.basename(file_path))[0]
+        
+        # 获取HTML内容
+        content = ''
+        for part in msg.walk():
+            if part.get_content_type() == 'text/html':
+                content = part.get_payload(decode=True).decode(part.get_content_charset() or 'utf-8')
+                break
+        
+        return subject, content 

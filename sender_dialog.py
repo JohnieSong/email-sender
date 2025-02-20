@@ -10,7 +10,7 @@ from database import Database
 
 class SenderInputDialog(QDialog):
     """发件人信息输入对话框"""
-    def __init__(self, parent=None, email='', password='', server_type='QQ企业邮箱'):
+    def __init__(self, parent=None, email='', password='', server_type='QQ企业邮箱', nickname=''):
         super().__init__(parent)
         self.db = Database()  # 获取数据库实例
         self.setWindowTitle('添加发件人')
@@ -55,6 +55,15 @@ class SenderInputDialog(QDialog):
         email_layout.addWidget(email_label)
         email_layout.addWidget(self.email_input)
         
+        # 添加昵称输入
+        nickname_layout = QHBoxLayout()
+        nickname_label = QLabel('昵称:')
+        nickname_label.setFixedWidth(60)
+        self.nickname_input = QLineEdit(nickname)
+        self.nickname_input.setPlaceholderText('请输入发件人昵称（可选）')
+        nickname_layout.addWidget(nickname_label)
+        nickname_layout.addWidget(self.nickname_input)
+        
         # 邮箱类型选择
         server_layout = QHBoxLayout()
         server_label = QLabel('邮箱类型:')
@@ -93,6 +102,7 @@ class SenderInputDialog(QDialog):
         
         # 添加所有布局到主布局
         layout.addLayout(email_layout)
+        layout.addLayout(nickname_layout)
         layout.addLayout(server_layout)
         layout.addLayout(password_layout)
         layout.addWidget(tip_label)
@@ -187,7 +197,8 @@ class SenderInputDialog(QDialog):
         return {
             'email': self.email_input.text().strip(),
             'password': self.password_input.text().strip(),
-            'server_type': self.server_combo.currentText()
+            'server_type': self.server_combo.currentText(),
+            'nickname': self.nickname_input.text().strip()
         }
 
 class SenderDialog(QDialog):
@@ -262,7 +273,7 @@ class SenderDialog(QDialog):
                 server.close()
                 
                 # 保存发件人信息
-                self.config.add_sender(data['email'], data['password'], data['server_type'])
+                self.config.add_sender(data['email'], data['password'], data['server_type'], data['nickname'])
                 self.load_senders()
                 self.sender_updated.emit()
                 MessageBox.show('成功', '发件人邮箱已添加', 'info', parent=self)
@@ -290,7 +301,8 @@ class SenderDialog(QDialog):
             self,
             email=sender_info['email'],
             password=sender_info['password'],
-            server_type=sender_info['server_type']
+            server_type=sender_info['server_type'],
+            nickname=sender_info['nickname']
         )
         
         if dialog.exec_() == QDialog.Accepted:
@@ -307,7 +319,7 @@ class SenderDialog(QDialog):
                 
                 # 更新发件人信息
                 self.config.remove_sender(email)
-                self.config.add_sender(data['email'], data['password'], data['server_type'])
+                self.config.add_sender(data['email'], data['password'], data['server_type'], data['nickname'])
                 self.load_senders()
                 self.sender_updated.emit()
                 MessageBox.show('成功', '发件人信息已更新', 'info', parent=self)
@@ -365,6 +377,7 @@ class SenderDialog(QDialog):
                     line-height: 1.5;
                 '>
                     <p style='margin: 0;'><b>邮箱地址:</b> {sender_info['email']}</p>
+                    <p style='margin: 5px 0;'><b>昵称:</b> {sender_info.get('nickname', '未设置')}</p>
                     <p style='margin: 5px 0;'><b>邮箱类型:</b> {sender_info.get('server_type')}</p>
                     <p style='margin: 0;'><b>状态:</b> <span style='color: #52c41a;'>已配置</span></p>
                 </div>

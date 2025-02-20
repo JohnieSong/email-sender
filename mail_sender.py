@@ -1,9 +1,10 @@
 import sys
 import os
+import time
 from PyQt5.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, 
                             QHBoxLayout, QLabel, QLineEdit, QPushButton, 
-                            QTextEdit, QFileDialog, QProgressBar, QComboBox, QDialog, QSplitter, QTextBrowser, QTableWidget, QTableWidgetItem, QHeaderView)
-from PyQt5.QtCore import Qt, pyqtSignal, QTimer
+                            QTextEdit, QFileDialog, QProgressBar, QComboBox, QDialog, QSplitter, QTextBrowser, QTableWidget, QTableWidgetItem, QHeaderView, QListWidget, QMessageBox, QListWidgetItem, QInputDialog)
+from PyQt5.QtCore import Qt, pyqtSignal, QTimer, QThread
 from PyQt5.QtGui import QColor, QBrush, QIcon
 import pandas as pd
 from email_utils import EmailServer
@@ -19,6 +20,14 @@ from datetime import datetime
 from log_dialog import LogDialog
 from logger import Logger
 from system_log_dialog import SystemLogDialog
+from message_box import MessageBox
+from email import message_from_file
+from email.header import Header
+from bs4 import BeautifulSoup
+from about_dialog import AboutDialog
+from queue import Queue
+import threading
+import chardet
 
 def get_resource_path(relative_path):
     """获取资源文件的绝对路径
@@ -70,6 +79,14 @@ class EmailSender(QMainWindow):
         # 延迟加载数据
         QTimer.singleShot(100, self.load_data)
 
+        # 添加计时器
+        self.countdown_timer = QTimer()
+        self.countdown_timer.timeout.connect(self.update_test_button)
+        self.countdown_timer.setInterval(1000)  # 每秒更新一次
+
+        self.send_thread = None
+        self.test_thread = None  # 添加测试邮件线程
+
     def load_data(self):
         """延迟加载数据"""
         self.load_templates()
@@ -78,7 +95,7 @@ class EmailSender(QMainWindow):
     def initUI(self):
         """初始化UI"""
         # 设置基本窗口属性
-        self.setWindowTitle('【BBRHub】邮件发送工具')
+        self.setWindowTitle('BBRHub - 邮件发送工具')
         # 设置窗口大小
 
         self.setGeometry(100, 100, 1200, 700)
@@ -229,6 +246,330 @@ class EmailSender(QMainWindow):
             self.status_label.setText(f'导入失败：{str(e)}')
             self.df = None
 
+    def import_template(self):
+        """导入模板"""
+        try:
+            file_name, _ = QFileDialog.getOpenFileName(
+                self,
+                "导入模板",
+                "",
+                "所有支持的格式 (*.eml *.html *.htm *.mht *.txt);;EML文件 (*.eml);;HTML文件 (*.html *.htm);;MHT文件 (*.mht);;文本文件 (*.txt)"
+            )
+            
+            if not file_name:
+                return
+            
+            # 获取文件扩展名
+            ext = os.path.splitext(file_name)[1].lower()
+            
+            try:
+                if ext == '.eml':
+                    subject, content = self._parse_eml_file(file_name)
+                elif ext in ['.html', '.htm']:
+                    subject, content = self._parse_html_file(file_name)
+                elif ext == '.mht':
+                    subject, content = self._parse_mht_file(file_name)
+                else:  # .txt
+                    with open(file_name, 'r', encoding='utf-8') as f:
+                        content = f.read()
+                    subject = os.path.splitext(os.path.basename(file_name))[0]
+                
+                # 确保HTML内容包含基本样式设置
+                if ext in ['.html', '.htm', '.eml', '.mht']:
+                    content = self._ensure_html_styles(content)
+                else:
+                    # 将纯文本转换为HTML格式
+                    content = (
+                        '<!DOCTYPE html>'
+                        '<html>'
+                        '<head>'
+                        '<meta charset="utf-8">'
+                        '<meta name="viewport" content="width=device-width, initial-scale=1.0">'
+                        '<style>'
+                        'body { font-family: Arial, sans-serif; font-size: 14px; line-height: 1.6; color: #333333; margin: 20px; }'
+                        'p { margin: 10px 0; }'
+                        'a { color: #1890ff; text-decoration: none; }'
+                        'a:hover { text-decoration: underline; }'
+                        '</style>'
+                        '</head>'
+                        '<body>'
+                        f'<div style="font-size: 14px; line-height: 1.6;">{content.replace(chr(10), "<br>")}</div>'
+                        '</body>'
+                        '</html>'
+                    )
+                
+                # 弹出对话框让用户输入模板名称
+                template_name, ok = QInputDialog.getText(
+                    self, 
+                    '保存模板',
+                    '请输入模板名称:',
+                    text=subject
+                )
+                
+                if ok and template_name:
+                    # 保存到数据库
+                    if self.db.add_template(template_name, content):
+                        self.load_templates()  # 重新加载模板列表
+                        MessageBox.show(
+                            '成功',
+                            '模板导入成功',
+                            'info',
+                            parent=self
+                        )
+                    else:
+                        MessageBox.show(
+                            '错误',
+                            '模板保存失败',
+                            'error',
+                            parent=self
+                        )
+                    
+            except Exception as e:
+                self.logger.error(f"解析模板文件失败: {str(e)}")
+                MessageBox.show(
+                    '错误',
+                    f'解析模板文件失败: {str(e)}',
+                    'error',
+                    parent=self
+                )
+            
+        except Exception as e:
+            self.logger.error(f"导入模板失败: {str(e)}")
+            MessageBox.show(
+                '错误',
+                f'导入模板失败: {str(e)}',
+                'error',
+                parent=self
+            )
+
+    def _ensure_html_styles(self, content):
+        """确保HTML内容包含必要的样式设置"""
+        try:
+            soup = BeautifulSoup(content, 'html.parser')
+            
+            # 添加DOCTYPE声明
+            if not str(soup).startswith('<!DOCTYPE'):
+                content = '<!DOCTYPE html>\n' + str(soup)
+                soup = BeautifulSoup(content, 'html.parser')
+            
+            # 如果没有html标签，添加一个
+            if not soup.html:
+                new_html = soup.new_tag('html')
+                new_html.append(soup)
+                soup = BeautifulSoup(str(new_html), 'html.parser')
+            
+            # 如果没有head标签，添加一个
+            if not soup.head:
+                head = soup.new_tag('head')
+                soup.html.insert(0, head)
+            
+            # 添加meta标签
+            if not soup.head.find('meta', attrs={'charset': True}):
+                meta_charset = soup.new_tag('meta', charset='utf-8')
+                soup.head.insert(0, meta_charset)
+            
+            if not soup.head.find('meta', attrs={'name': 'viewport'}):
+                meta_viewport = soup.new_tag('meta', attrs={
+                    'name': 'viewport',
+                    'content': 'width=device-width, initial-scale=1.0'
+                })
+                soup.head.append(meta_viewport)
+            
+            # 如果没有body标签，添加一个
+            if not soup.body:
+                body = soup.new_tag('body')
+                if soup.html.contents:
+                    body.extend(soup.html.contents[1:])
+                soup.html.append(body)
+            
+            # 添加默认样式
+            style = soup.new_tag('style')
+            style.string = (
+                'body { font-family: Arial, sans-serif; font-size: 14px; line-height: 1.6; color: #333333; margin: 20px; }'
+                'p { margin: 0 0 1em 0; }'
+                'a { color: #1890ff; text-decoration: none; }'
+                'a:hover { text-decoration: underline; }'
+                'table { border-collapse: collapse; margin: 1em 0; width: 100%; }'
+                'td, th { padding: 8px; border: 1px solid #e8e8e8; }'
+            )
+            
+            # 检查是否已存在style标签
+            existing_style = soup.head.find('style')
+            if existing_style:
+                existing_style.string = style.string + existing_style.string
+            else:
+                soup.head.append(style)
+            
+            # 确保所有文本内容都有合适的样式
+            for tag in soup.find_all(text=True):
+                if tag.parent.name not in ['style', 'script']:
+                    if not tag.parent.get('style'):
+                        tag.parent['style'] = 'font-size: 14px; line-height: 1.6;'
+            
+            return str(soup)
+            
+        except Exception as e:
+            self.logger.error(f"处理HTML样式失败: {str(e)}")
+            return content
+
+    def _parse_eml_file(self, file_path):
+        """解析EML文件"""
+        try:
+            import email.policy
+            
+            # 首先检测文件编码
+            with open(file_path, 'rb') as f:
+                raw_content = f.read()
+                detected = chardet.detect(raw_content)
+                encoding = detected['encoding'] or 'utf-8'
+            
+            # 使用检测到的编码读取文件
+            with open(file_path, 'r', encoding=encoding, errors='replace') as f:
+                msg = message_from_file(f, policy=email.policy.default)
+            
+            # 获取主题
+            subject = msg.get('subject', '')
+            if subject.startswith('=?'):  # 处理编码的主题
+                subject = str(Header.make_header(Header.decode_header(subject)))
+            
+            # 获取内容
+            content = None
+            if msg.is_multipart():
+                for part in msg.walk():
+                    if part.get_content_type() == 'text/html':
+                        try:
+                            payload = part.get_payload(decode=True)
+                            charset = part.get_content_charset() or 'utf-8'
+                            content = payload.decode(charset, errors='replace')
+                            break
+                        except Exception as e:
+                            self.logger.error(f"解析HTML内容失败: {str(e)}")
+                            continue
+                
+                # 如果没有找到HTML内容，尝试获取纯文本
+                if not content:
+                    for part in msg.walk():
+                        if part.get_content_type() == 'text/plain':
+                            try:
+                                payload = part.get_payload(decode=True)
+                                charset = part.get_content_charset() or 'utf-8'
+                                content = payload.decode(charset, errors='replace')
+                                # 将纯文本转换为HTML格式
+                                content = (
+                                    '<html>'
+                                    '<head>'
+                                    '<style>'
+                                    'body {'
+                                    '    font-family: Arial, sans-serif;'
+                                    '    font-size: 14px;'
+                                    '    line-height: 1.6;'
+                                    '    color: #333333;'
+                                    '    margin: 20px;'
+                                    '}'
+                                    '</style>'
+                                    '</head>'
+                                    '<body>'
+                                    f'<div>{content.replace(chr(10), "<br>")}</div>'
+                                    '</body>'
+                                    '</html>'
+                                )
+                                break
+                            except Exception as e:
+                                self.logger.error(f"解析纯文本内容失败: {str(e)}")
+                                continue
+            else:
+                try:
+                    payload = msg.get_payload(decode=True)
+                    charset = msg.get_content_charset() or 'utf-8'
+                    content = payload.decode(charset, errors='replace')
+                except Exception as e:
+                    self.logger.error(f"解析非多部分内容失败: {str(e)}")
+                    content = msg.get_payload()
+            
+            if not content:
+                raise Exception("无法解析邮件内容")
+            
+            # 如果内容是纯文本，转换为HTML
+            if msg.get_content_type() == 'text/plain':
+                content = (
+                    '<html>'
+                    '<head>'
+                    '<style>'
+                    'body {'
+                    '    font-family: Arial, sans-serif;'
+                    '    font-size: 14px;'
+                    '    line-height: 1.6;'
+                    '    color: #333333;'
+                    '    margin: 20px;'
+                    '}'
+                    '</style>'
+                    '</head>'
+                    '<body>'
+                    f'<div>{content.replace(chr(10), "<br>")}</div>'
+                    '</body>'
+                    '</html>'
+                )
+            
+            return subject, content
+            
+        except Exception as e:
+            self.logger.error(f"解析EML文件失败: {str(e)}")
+            raise Exception(f"解析EML文件失败: {str(e)}")
+
+    def _parse_html_file(self, file_path):
+        """解析HTML文件
+        
+        Args:
+            file_path: HTML文件路径
+            
+        Returns:
+            tuple: (主题, 内容)
+        """
+        from bs4 import BeautifulSoup
+        
+        with open(file_path, 'r', encoding='utf-8') as f:
+            soup = BeautifulSoup(f.read(), 'html.parser')
+        
+        # 尝试从title标签获取主题
+        title = soup.title.string if soup.title else ''
+        if not title:
+            title = os.path.splitext(os.path.basename(file_path))[0]
+        
+        # 获取完整HTML内容
+        content = str(soup)
+        
+        return title, content
+
+    def _parse_mht_file(self, file_path):
+        """解析MHT文件
+        
+        Args:
+            file_path: MHT文件路径
+            
+        Returns:
+            tuple: (主题, 内容)
+        """
+        import email.policy
+        
+        with open(file_path, 'r', encoding='utf-8') as f:
+            msg = message_from_file(f, policy=email.policy.default)
+        
+        # 获取主题
+        subject = msg.get('subject', '')
+        if subject.startswith('=?'):
+            subject = str(Header.make_header(Header.decode_header(subject)))
+        if not subject:
+            subject = os.path.splitext(os.path.basename(file_path))[0]
+        
+        # 获取HTML内容
+        content = ''
+        for part in msg.walk():
+            if part.get_content_type() == 'text/html':
+                content = part.get_payload(decode=True).decode(part.get_content_charset() or 'utf-8')
+                break
+        
+        return subject, content
+
     def preview_email(self):
         if not hasattr(self, 'df') or self.df is None or len(self.df.index) == 0:
             self.status_label.setText('请先到文件菜单导入Excel文件')
@@ -305,10 +646,45 @@ class EmailSender(QMainWindow):
         except Exception as e:
             self.status_label.setText(f'预览窗口创建失败：{str(e)}')
 
+    def update_test_button(self):
+        """更新发送测试按钮的倒计时显示"""
+        current_time = time.time()
+        remaining_time = int(EmailServer.TEST_EMAIL_INTERVAL - 
+                           (current_time - EmailServer.last_test_time))
+        
+        if remaining_time <= 0:
+            self.countdown_timer.stop()
+            self.test_btn.setText('发送测试')
+            self.test_btn.setEnabled(True)
+        else:
+            if remaining_time >= 60:
+                minutes = remaining_time // 60
+                seconds = remaining_time % 60
+                time_str = f"{minutes}分{seconds}秒" if seconds else f"{minutes}分钟"
+            else:
+                time_str = f"{remaining_time}秒"
+            self.test_btn.setText(f'发送测试({time_str})')
+            self.test_btn.setEnabled(False)
+
     def send_test_email(self):
         """发送测试邮件到发件人邮箱"""
-        self.logger.info("开始发送测试邮件")
-        # 检查是否选择了模板
+        # 检查时间间隔
+        current_time = time.time()
+        if current_time - EmailServer.last_test_time < EmailServer.TEST_EMAIL_INTERVAL:
+            remaining_time = int(EmailServer.TEST_EMAIL_INTERVAL - 
+                               (current_time - EmailServer.last_test_time))
+            if remaining_time >= 60:
+                minutes = remaining_time // 60
+                seconds = remaining_time % 60
+                time_str = f"{minutes}分{seconds}秒" if seconds else f"{minutes}分钟"
+            else:
+                time_str = f"{remaining_time}秒"
+            self.test_btn.setText(f'发送测试({time_str})')
+            self.test_btn.setEnabled(False)
+            self.countdown_timer.start()
+            return
+
+        # 检查条件
         template_name = self.template_combo.currentText()
         if not template_name:
             self.status_label.setText('请先选择邮件模板')
@@ -326,43 +702,38 @@ class EmailSender(QMainWindow):
                 self.status_label.setText('模板加载失败')
                 return
 
-            # 从配置文件获取测试数据
-            test_data = self.config.get_test_data()
-            # 添加收件人邮箱
-            test_data['收件人邮箱'] = self.current_sender['email']
+            # 禁用测试按钮
+            self.test_btn.setEnabled(False)
+            self.status_label.setText('正在发送测试邮件...')
 
-            # 使用配置的邮箱类型
-            email_server = EmailServer(
-                self.current_sender['email'],
-                self.current_sender['password'],
-                self.current_sender.get('server_type', 'QQ企业邮箱')
+            # 创建并启动测试邮件线程
+            self.test_thread = TestEmailThread(
+                self.current_sender,
+                template,
+                self.config.get_test_data(),
+                self.attachments
             )
-            email_server.connect()
-
-            # 替换模板中的变量
-            content = template['content']
-            for key, value in test_data.items():
-                placeholder = '{' + key + '}'
-                content = content.replace(placeholder, str(value))
-            subject = template['title'].format(**test_data)
-            
-            success, message = email_server.send_email(
-                test_data['收件人邮箱'],
-                subject,
-                content
-            )
-
-            if success:
-                self.status_label.setText('测试邮件发送成功')
-                self.logger.info("测试邮件发送成功")
-            else:
-                self.status_label.setText(f'测试邮件发送失败: {message}')
-
-            email_server.close()
+            self.test_thread.finished.connect(self.on_test_email_finished)
+            self.test_thread.start()
 
         except Exception as e:
             self.logger.error(f"测试邮件发送失败: {str(e)}")
             self.status_label.setText(f'发送失败：{str(e)}')
+            self.test_btn.setEnabled(True)
+
+    def on_test_email_finished(self, success, message):
+        """测试邮件发送完成处理"""
+        if success:
+            self.status_label.setText('测试邮件发送成功')
+            self.logger.info("测试邮件发送成功")
+            # 更新最后发送时间并启动倒计时
+            EmailServer.last_test_time = time.time()
+            self.test_btn.setEnabled(False)
+            self.countdown_timer.start()
+        else:
+            self.status_label.setText(f'测试邮件发送失败: {message}')
+            self.logger.error(f"测试邮件发送失败: {message}")
+            self.test_btn.setEnabled(True)
 
     def start_sending(self):
         """开始批量发送邮件"""
@@ -371,94 +742,128 @@ class EmailSender(QMainWindow):
             return
         
         try:
-            # 准备发送
+            # 获取当前选中的模板
             template_name = self.template_combo.currentText()
-            templates = self.db.get_templates()  # 从数据库获取模板
+            templates = self.db.get_templates()
             template = templates.get(template_name)
-            if not template:
-                self.status_label.setText('模板不存在')
-                return
             
-            # 设置进度条
-            total = len(self.df)
-            self.progress_bar.setMaximum(total)
+            # 先更新UI状态，确保界面响应
+            self.progress_bar.setMaximum(len(self.df))
             self.progress_bar.setValue(0)
-            self.progress_bar.setFormat('正在发送 - %p% (%v/%m)')
+            self.progress_bar.setFormat('准备发送...')
+            self.status_label.setText('正在准备发送...')
             
-            # 创建邮件服务器连接
-            server = EmailServer(
-                self.current_sender['email'],
-                self.current_sender['password'],
-                self.current_sender.get('server_type')
-            )
+            # 禁用相关控件
+            self.sender_combo.setEnabled(False)
+            self.template_combo.setEnabled(False)
+            self.test_btn.setEnabled(False)
             
-            # 遍历发送
-            for index, row in self.df.iterrows():
-                try:
-                    # 获取测试数据
-                    test_data = self.config.get_test_data()
-                    # 更新数据，Excel数据优先
-                    test_data.update(row.to_dict())
-                    
-                    # 替换变量
-                    title = template['title']
-                    content = template['content']
-                    for key, value in test_data.items():
-                        placeholder = '{' + key + '}'
-                        title = title.replace(placeholder, str(value))
-                        content = content.replace(placeholder, str(value))
-                    
-                    # 发送邮件
-                    success, message = server.send_email(
-                        test_data['收件人邮箱'],
-                        title,
-                        content
-                    )
-                    
-                    # 更新状态
-                    status_item = self.log_table.item(index, 2)
-                    if success:
-                        status_item.setText('发送成功')
-                        status_item.setForeground(QBrush(QColor('#28a745')))  # 绿色
-                    else:
-                        status_item.setText(f'发送失败: {message}')
-                        status_item.setForeground(QBrush(QColor('#dc3545')))  # 红色
-                    
-                    # 更新进度条
-                    self.progress_bar.setValue(index + 1)
-                    if index + 1 == total:
-                        self.progress_bar.setFormat('发送完成 - 100% (%m/%m)')
-                    QApplication.processEvents()
-                    
-                    # 记录发送日志
-                    self.db.add_send_log(
-                        batch_id=f"BATCH_{datetime.now().strftime('%Y%m%d%H%M%S')}",
-                        sender_email=self.current_sender['email'],
-                        recipient_email=test_data['收件人邮箱'],
-                        recipient_name=test_data['姓名'],
-                        subject=title,
-                        status='成功' if success else '失败',
-                        error_message=message if not success else None
-                    )
-                    
-                except Exception as e:
-                    # 更新失败状态
-                    status_item = self.log_table.item(index, 2)
-                    status_item.setText(f'发送失败: {str(e)}')
-                    status_item.setForeground(QBrush(QColor('#dc3545')))  # 红色
-                
-            server.close()
-            self.status_label.setText('发送完成')
-            self.logger.info(f"批量发送完成，共发送{total}封邮件")
+            # 更新发送按钮状态
+            self.send_btn.setText('停止发送')
+            if self.send_btn.receivers(self.send_btn.clicked) > 0:
+                self.send_btn.clicked.disconnect()
+            self.send_btn.clicked.connect(self.stop_sending)
             
-            # 如果是最后一封邮件,自动导出结果
-            if index + 1 == total:
-                self.export_batch_result(f"BATCH_{datetime.now().strftime('%Y%m%d%H%M%S')}")
+            # 清理之前的线程（如果存在）
+            if self.send_thread and self.send_thread.isRunning():
+                self.send_thread.stop()
+                self.send_thread.wait()
+            
+            # 使用 QTimer 延迟创建和启动线程，确保UI更新
+            QTimer.singleShot(100, lambda: self._start_send_thread(template))
             
         except Exception as e:
-            self.progress_bar.setFormat('发送失败 - %p% (%v/%m)')
-            self.logger.error(f"批量发送失败: {str(e)}")
+            self.logger.error(f"发送失败: {str(e)}")
             self.status_label.setText(f'发送失败：{str(e)}')
+            self._reset_ui_state()
+
+    def _start_send_thread(self, template):
+        """启动发送线程"""
+        try:
+            # 创建发送线程
+            self.send_thread = SendEmailThread(
+                self.current_sender,
+                template,
+                self.df,
+                self.attachments
+            )
+            
+            # 连接信号
+            self.send_thread.progress_updated.connect(self.update_send_progress, Qt.QueuedConnection)
+            self.send_thread.finished.connect(self.on_send_finished, Qt.QueuedConnection)
+            
+            # 启动线程
+            self.send_thread.start()
+            
+        except Exception as e:
+            self.logger.error(f"启动发送线程失败: {str(e)}")
+            self.status_label.setText(f'启动发送失败：{str(e)}')
+            self._reset_ui_state()
+
+    def _reset_ui_state(self):
+        """重置UI状态"""
+        self.sender_combo.setEnabled(True)
+        self.template_combo.setEnabled(True)
+        self.test_btn.setEnabled(True)
+        self.send_btn.setText('开始发送')
+        if self.send_btn.receivers(self.send_btn.clicked) > 0:
+            self.send_btn.clicked.disconnect()
+        self.send_btn.clicked.connect(self.start_sending)
+
+    def stop_sending(self):
+        """停止发送"""
+        if self.send_thread and self.send_thread.isRunning():
+            self.status_label.setText('正在停止发送...')
+            self.send_btn.setEnabled(False)
+            self.send_thread.stop()
+
+    def update_send_progress(self, current, status, error):
+        """更新发送进度"""
+        try:
+            # 使用 QTimer 延迟更新UI
+            def _update():
+                try:
+                    self.progress_bar.setValue(current)
+                    self.progress_bar.setFormat(f'正在发送 - %p% ({current}/{self.progress_bar.maximum()})')
+                    
+                    # 更新日志表格
+                    row = current - 1
+                    if 0 <= row < self.log_table.rowCount():
+                        status_item = self.log_table.item(row, 2)
+                        if status_item:
+                            status_item.setText(status)
+                            if '成功' in status:
+                                status_item.setForeground(QBrush(QColor('#52c41a')))  # 绿色
+                            else:
+                                status_item.setForeground(QBrush(QColor('#ff4d4f')))  # 红色
+                                status_item.setToolTip(error)  # 设置错误提示
+                except Exception as e:
+                    self.logger.error(f"更新UI失败: {str(e)}")
+            
+            QTimer.singleShot(0, _update)
+            
+        except Exception as e:
+            self.logger.error(f"更新进度失败: {str(e)}")
+
+    def on_send_finished(self, success, message):
+        """发送完成处理"""
+        try:
+            self._reset_ui_state()
+            
+            if success:
+                self.progress_bar.setFormat('发送完成 - %p% (%v/%m)')
+                self.status_label.setText('发送完成')
+            else:
+                self.progress_bar.setFormat('发送失败 - %p% (%v/%m)')
+                self.status_label.setText(f'发送失败: {message}')
+            
+            # 记录发送批次结果
+            batch_id = f"BATCH_{datetime.now().strftime('%Y%m%d%H%M%S')}"
+            self.export_batch_result(batch_id)
+            
+        except Exception as e:
+            self.logger.error(f"处理发送完成事件失败: {str(e)}")
+            self.status_label.setText(f'处理发送完成失败：{str(e)}')
 
     def load_templates(self):
         """加载模板列表"""
@@ -690,68 +1095,8 @@ class EmailSender(QMainWindow):
 
     def show_about(self):
         """显示关于对话框"""
-        about_dialog = QDialog(self)
-        about_dialog.setWindowTitle('关于')
-        # 设置对话框大小根据文本自适应
-        about_dialog.resize(400, 600) # 设置对话框的固定大小
-        
-        # 计算对话框相对于主窗口的居中位置
-        x = self.x() + (self.width() - about_dialog.width()) // 2
-        y = self.y() + (self.height() - about_dialog.height()) // 2
-        about_dialog.move(x, y)
-        
-        layout = QVBoxLayout(about_dialog)
-        layout.setContentsMargins(20, 20, 20, 20) # 设置对话框的边距
-        layout.setSpacing(15)
-        
-        # 修改图标加载方式
-        icon_label = QLabel()
-        icon_path = get_resource_path('imgs/logo.ico')
-        icon_label.setPixmap(QIcon(icon_path).pixmap(64, 64))
-        icon_label.setAlignment(Qt.AlignCenter)
-        layout.addWidget(icon_label)
-        
-        # 添加文本
-        text_label = QLabel("""
-            <div style='text-align: center;'>
-                <h2 style='color: #40a9ff;'>邮件批量发送程序</h2>
-                <p style='margin: 15px 0; line-height: 1.5;'>
-                    这是一个专业的批量邮件发送工具，支持多种邮箱服务商，
-                    可以自定义邮件模板，支持变量替换，让邮件发送更加高效便捷。
-                </p>
-                <p style='margin: 10px 0;'>
-                    <b>主要功能：</b>
-                </p>
-                <p style='margin: 5px 0; line-height: 1.5;'>
-                    • 支持多种邮箱服务商（QQ邮箱、企业邮箱等）<br>
-                    • 自定义邮件模板，支持HTML格式<br>
-                    • Excel导入收件人信息<br>
-                    • 实时发送状态监控<br>
-                    • 批量发送进度显示
-                </p>
-                <p style='margin: 10px 0;'><b>版本：</b>1.0.0</p>
-                <p style='margin: 10px 0;'><b>开发商：</b>BBRHub</p>
-                <p style='margin: 10px 0;'><b>版权所有：</b>© 2025 保留所有权利</p>
-            </div>
-        """)
-        text_label.setAlignment(Qt.AlignCenter)
-        text_label.setWordWrap(True)  # 允许文本换行
-        layout.addWidget(text_label)
-        
-        # 添加关闭按钮
-        close_btn = QPushButton('关闭')
-        close_btn.setFixedWidth(100) # 设置按钮宽度
-        close_btn.clicked.connect(about_dialog.close)
-        
-        btn_layout = QHBoxLayout()
-        btn_layout.addWidget(close_btn)
-        btn_layout.setAlignment(Qt.AlignCenter)
-        layout.addLayout(btn_layout)
-        
-        # 禁用对话框的系统菜单，防止拖动
-        about_dialog.setWindowFlags(Qt.Dialog | Qt.MSWindowsFixedSizeDialogHint)
-        
-        about_dialog.exec_()
+        dialog = AboutDialog(self)
+        dialog.exec_()
 
     def show_log_tooltip(self, row, column):
         """显示日志表格的工具提示"""
@@ -941,14 +1286,6 @@ class EmailSender(QMainWindow):
         
         log_layout.addWidget(self.log_table)
 
-        # 添加组件到左侧布局
-        left_layout.addWidget(sender_group)
-        left_layout.addWidget(template_group)
-        left_layout.addWidget(progress_group)
-        left_layout.addWidget(button_group)
-        left_layout.addWidget(self.status_label)
-        left_layout.addWidget(log_group, 1)
-
         # 右侧预览区域
         preview_group = QWidget()
         preview_group.setObjectName("groupBox")
@@ -965,8 +1302,48 @@ class EmailSender(QMainWindow):
         title_layout.addWidget(title_label)
         title_layout.addWidget(self.preview_title)
 
+        # 附件组件 - 移动到右侧
+        attachment_layout = QHBoxLayout()
+        attachment_label = QLabel('附件:')
+        attachment_label.setFixedWidth(80)
+
+        # 显示附件数量
+        self.attachment_count = QLabel('无附件')
+        self.attachment_count.setStyleSheet("""
+            QLabel {
+                color: #666666;
+                padding: 0 10px;
+            }
+        """)
+
+        # 查看附件按钮
+        view_attachment_btn = QPushButton('管理附件')
+        view_attachment_btn.setFixedWidth(80)
+        view_attachment_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #1890ff;
+                color: white;
+                border: none;
+                padding: 3px 8px;
+                border-radius: 2px;
+                font-size: 12px;
+                min-height: 24px;
+            }
+            QPushButton:hover {
+                background-color: #40a9ff;
+            }
+        """)
+        view_attachment_btn.clicked.connect(self.manage_attachments)
+
+        # 组装附件布局
+        attachment_layout.addWidget(attachment_label)
+        attachment_layout.addWidget(self.attachment_count)
+        attachment_layout.addWidget(view_attachment_btn)
+        attachment_layout.addStretch()
+
         # 预览内容
         content_label = QLabel('邮件内容:')
+        content_label.setFixedWidth(80)
         self.preview_content = QTextBrowser()
         self.preview_content.setOpenExternalLinks(False)
         self.preview_content.setOpenLinks(False)
@@ -978,9 +1355,19 @@ class EmailSender(QMainWindow):
             }
         """)
 
+        # 添加到预览布局
         preview_layout.addLayout(title_layout)
+        preview_layout.addLayout(attachment_layout)  # 直接添加附件布局
         preview_layout.addWidget(content_label)
         preview_layout.addWidget(self.preview_content)
+
+        # 从左侧布局中移除附件组件
+        left_layout.addWidget(sender_group)
+        left_layout.addWidget(template_group)
+        left_layout.addWidget(progress_group)
+        left_layout.addWidget(button_group)
+        left_layout.addWidget(self.status_label)
+        left_layout.addWidget(log_group)
 
         # 使用分割器添加左右两侧
         splitter = QSplitter(Qt.Horizontal)
@@ -1035,6 +1422,31 @@ class EmailSender(QMainWindow):
         self.setCentralWidget(central_widget)
         central_widget.setLayout(main_layout)
 
+        # 初始化附件列表
+        self.attachments = []
+
+    def manage_attachments(self):
+        """管理附件"""
+        dialog = AttachmentDialog(self, self.attachments)
+        if dialog.exec_() == QDialog.Accepted:
+            self.attachments = dialog.attachments
+            # 更新附件数量显示
+            count = len(self.attachments)
+            if count > 0:
+                total_size = sum(os.path.getsize(f) for f in self.attachments)
+                size_str = self.format_file_size(total_size)
+                self.attachment_count.setText(f'{count}个附件 ({size_str})')
+            else:
+                self.attachment_count.setText('无附件')
+
+    def format_file_size(self, size):
+        """格式化文件大小显示"""
+        for unit in ['B', 'KB', 'MB', 'GB']:
+            if size < 1024.0:
+                return f"{size:.1f}{unit}"
+            size /= 1024.0
+        return f"{size:.1f}GB"
+
     def export_batch_result(self, batch_id):
         """导出批次发送结果"""
         try:
@@ -1080,6 +1492,7 @@ class EmailSender(QMainWindow):
             self.status_label.setText(f'发送完成,结果已导出到: {file_name}')
         except Exception as e:
             self.status_label.setText(f'导出结果失败: {str(e)}')
+
     def show_history(self):
         """显示历史记录对话框"""
         dialog = LogDialog(self)
@@ -1089,6 +1502,394 @@ class EmailSender(QMainWindow):
         """显示系统日志对话框"""
         dialog = SystemLogDialog(self)
         dialog.exec_()
+
+class TestEmailThread(QThread):
+    """测试邮件发送线程"""
+    finished = pyqtSignal(bool, str)  # 成功标志, 消息
+    
+    def __init__(self, sender, template, test_data, attachments=None):
+        super().__init__()
+        self.sender = sender
+        self.template = template
+        self.test_data = test_data
+        self.attachments = attachments or []
+        
+    def run(self):
+        try:
+            # 添加收件人邮箱到测试数据
+            self.test_data['收件人邮箱'] = self.sender['email']
+            
+            # 替换模板中的变量
+            content = self.template['content']
+            title = self.template['title']
+            
+            for key, value in self.test_data.items():
+                placeholder = '{' + key + '}'
+                title = title.replace(placeholder, str(value))
+                content = content.replace(placeholder, str(value))
+            
+            # 创建邮件服务器连接
+            server = EmailServer(
+                self.sender['email'],
+                self.sender['password'],
+                self.sender.get('server_type')
+            )
+            
+            # 发送邮件
+            success, message = server.send_email(
+                self.test_data['收件人邮箱'],
+                title,
+                content,
+                self.attachments
+            )
+            
+            server.close()
+            self.finished.emit(success, message)
+            
+        except Exception as e:
+            self.finished.emit(False, str(e))
+
+class SendEmailThread(QThread):
+    """邮件发送线程"""
+    progress_updated = pyqtSignal(int, str, str)  # 进度, 状态, 错误信息
+    finished = pyqtSignal(bool, str)  # 是否成功, 消息
+    
+    def __init__(self, sender, template, df, attachments=None):
+        super().__init__()
+        self.sender = sender
+        self.template = template
+        self.df = df
+        self.attachments = attachments or []
+        self.is_running = True
+        self.server = None
+        self.task_queue = Queue()
+        self.result_queue = Queue()
+        
+    def run(self):
+        """运行发送任务"""
+        try:
+            # 创建工作线程
+            worker_thread = threading.Thread(target=self._send_worker)
+            worker_thread.daemon = True
+            worker_thread.start()
+            
+            # 添加任务到队列
+            total = len(self.df)
+            for index, row in self.df.iterrows():
+                if not self.is_running:
+                    break
+                self.task_queue.put((index, row))
+            
+            # 等待所有任务完成或停止
+            while self.is_running:
+                if self.task_queue.empty() and not worker_thread.is_alive():
+                    break
+                QThread.msleep(100)
+            
+            # 处理结果
+            success = True
+            error_msg = ""
+            while not self.result_queue.empty():
+                result = self.result_queue.get()
+                if not result[0]:  # 如果有任何失败
+                    success = False
+                    error_msg = result[1]
+                    break
+            
+            if self.is_running:
+                self.finished.emit(success, error_msg or '发送完成')
+            else:
+                self.finished.emit(False, '用户停止发送')
+                
+        except Exception as e:
+            self.finished.emit(False, str(e))
+    
+    def _send_worker(self):
+        """邮件发送工作线程"""
+        try:
+            # 创建邮件服务器连接
+            self.server = EmailServer(
+                self.sender['email'],
+                self.sender['password'],
+                self.sender.get('server_type')
+            )
+            
+            while self.is_running:
+                try:
+                    # 获取任务，设置超时以便检查停止标志
+                    index, row = self.task_queue.get_nowait()  # 改用 get_nowait
+                except Queue.Empty:
+                    # 如果队列为空，说明任务完成
+                    break
+                
+                try:
+                    # 替换变量
+                    content = self.template['content']
+                    title = self.template['title']
+                    data_dict = row.to_dict()
+                    
+                    for key, value in data_dict.items():
+                        placeholder = '{' + key + '}'
+                        title = title.replace(placeholder, str(value))
+                        content = content.replace(placeholder, str(value))
+                    
+                    # 发送邮件
+                    success, message = self.server.send_email(
+                        row['收件人邮箱'],
+                        title,
+                        content,
+                        self.attachments
+                    )
+                    
+                    # 发送进度信号
+                    status = '发送成功' if success else f'发送失败: {message}'
+                    self.progress_updated.emit(index + 1, status, message if not success else '')
+                    
+                    # 记录结果
+                    self.result_queue.put((success, message))
+                    
+                    # 标记任务完成
+                    self.task_queue.task_done()
+                    
+                    # 添加短暂延时
+                    QThread.msleep(100)
+                    
+                except Exception as e:
+                    self.progress_updated.emit(index + 1, f'发送失败: {str(e)}', str(e))
+                    self.result_queue.put((False, str(e)))
+                    self.task_queue.task_done()
+                    QThread.msleep(200)
+            
+        finally:
+            if self.server:
+                try:
+                    self.server.close()
+                except:
+                    pass
+    
+    def stop(self):
+        """停止发送"""
+        self.is_running = False
+        # 清空任务队列
+        while not self.task_queue.empty():
+            try:
+                self.task_queue.get_nowait()
+                self.task_queue.task_done()
+            except:
+                pass
+        # 关闭服务器连接
+        if self.server:
+            try:
+                self.server.close()
+            except:
+                pass
+
+class AttachmentDialog(QDialog):
+    """附件管理对话框"""
+    def __init__(self, parent=None, attachments=None):
+        super().__init__(parent)
+        self.attachments = attachments.copy() if attachments else []  # 创建副本
+        self.setWindowTitle('附件管理')
+        self.setMinimumWidth(500)
+        # 禁用关闭按钮
+        self.setWindowFlags(self.windowFlags() & ~Qt.WindowCloseButtonHint)
+        self.initUI()
+        
+    def initUI(self):
+        layout = QVBoxLayout()
+        
+        # 附件列表
+        self.attachment_list = QListWidget()
+        self.attachment_list.setStyleSheet("""
+            QListWidget {
+                border: 1px solid #ddd;
+                border-radius: 4px;
+                padding: 5px;
+                background-color: #fafafa;
+            }
+            QListWidget::item {
+                padding: 8px;
+                border-radius: 4px;
+                margin: 2px 0;
+            }
+            QListWidget::item:hover {
+                background-color: #f0f0f0;
+            }
+            QListWidget::item:selected {
+                background-color: #e6f7ff;
+                color: #1890ff;
+            }
+        """)
+        
+        # 加载现有附件
+        for file_path in self.attachments:
+            size = os.path.getsize(file_path)
+            size_str = self.format_file_size(size)
+            item = QListWidgetItem(f"{os.path.basename(file_path)} ({size_str})")
+            item.setToolTip(file_path)
+            self.attachment_list.addItem(item)
+        
+        # 按钮布局
+        btn_layout = QHBoxLayout()
+        add_btn = QPushButton('+ 添加')
+        add_btn.setFixedWidth(60)  # 减小按钮宽度
+        add_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #1890ff;
+                color: white;
+                border: none;
+                padding: 4px 8px;
+                border-radius: 2px;
+                font-size: 12px;
+                min-height: 24px;
+            }
+            QPushButton:hover {
+                background-color: #40a9ff;
+            }
+        """)
+        add_btn.clicked.connect(self.add_attachment)
+        
+        remove_btn = QPushButton('- 删除')
+        remove_btn.setFixedWidth(60)  # 减小按钮宽度
+        remove_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #ff4d4f;
+                color: white;
+                border: none;
+                padding: 4px 8px;
+                border-radius: 2px;
+                font-size: 12px;
+                min-height: 24px;
+            }
+            QPushButton:hover {
+                background-color: #ff7875;
+            }
+        """)
+        remove_btn.clicked.connect(self.remove_attachment)
+        
+        btn_layout.addWidget(add_btn)
+        btn_layout.addWidget(remove_btn)
+        btn_layout.addStretch()
+        
+        # 总大小显示
+        self.size_label = QLabel()
+        self.update_total_size()
+        
+        # 确认和取消按钮
+        dialog_buttons = QHBoxLayout()
+        
+        confirm_btn = QPushButton('确定')
+        confirm_btn.setFixedWidth(60)  # 减小按钮宽度
+        confirm_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #1890ff;
+                color: white;
+                border: none;
+                padding: 4px 8px;
+                border-radius: 2px;
+                font-size: 12px;
+                min-height: 24px;
+            }
+            QPushButton:hover {
+                background-color: #40a9ff;
+            }
+        """)
+        confirm_btn.clicked.connect(self.accept)
+        
+        cancel_btn = QPushButton('取消')
+        cancel_btn.setFixedWidth(60)  # 减小按钮宽度
+        cancel_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #f5f5f5;
+                color: #333;
+                border: 1px solid #d9d9d9;
+                padding: 4px 8px;
+                border-radius: 2px;
+                font-size: 12px;
+                min-height: 24px;
+            }
+            QPushButton:hover {
+                background-color: #fafafa;
+                border-color: #40a9ff;
+                color: #40a9ff;
+            }
+        """)
+        cancel_btn.clicked.connect(self.reject)
+        
+        dialog_buttons.addStretch()
+        dialog_buttons.addWidget(confirm_btn)
+        dialog_buttons.addWidget(cancel_btn)
+        
+        # 添加到主布局
+        layout.addWidget(self.attachment_list)
+        layout.addLayout(btn_layout)
+        layout.addWidget(self.size_label)
+        layout.addLayout(dialog_buttons)  # 添加确认取消按钮
+        
+        self.setLayout(layout)
+        
+    def format_file_size(self, size):
+        for unit in ['B', 'KB', 'MB', 'GB']:
+            if size < 1024.0:
+                return f"{size:.1f}{unit}"
+            size /= 1024.0
+        return f"{size:.1f}GB"
+        
+    def update_total_size(self):
+        if self.attachments:
+            total = sum(os.path.getsize(f) for f in self.attachments)
+            self.size_label.setText(f'总大小: {self.format_file_size(total)}')
+        else:
+            self.size_label.setText('没有附件')
+            
+    def add_attachment(self):
+        files, _ = QFileDialog.getOpenFileNames(
+            self,
+            "选择附件",
+            "",
+            "所有文件 (*.*)"
+        )
+        
+        if files:
+            total_size = sum(os.path.getsize(f) for f in self.attachments)
+            
+            for file_path in files:
+                file_size = os.path.getsize(file_path)
+                
+                if file_size > EmailServer.MAX_ATTACHMENT_SIZE:
+                    MessageBox.show(
+                        '错误',
+                        f'附件 {os.path.basename(file_path)} 超过大小限制(25MB)',
+                        'critical',
+                        parent=self
+                    )
+                    continue
+                    
+                if total_size + file_size > EmailServer.MAX_ATTACHMENT_SIZE:
+                    MessageBox.show(
+                        '错误',
+                        '附件总大小超过限制(25MB)',
+                        'critical',
+                        parent=self
+                    )
+                    break
+                    
+                if file_path not in self.attachments:
+                    self.attachments.append(file_path)
+                    size_str = self.format_file_size(file_size)
+                    item = QListWidgetItem(f"{os.path.basename(file_path)} ({size_str})")
+                    item.setToolTip(file_path)
+                    self.attachment_list.addItem(item)
+                    total_size += file_size
+            
+            self.update_total_size()
+            
+    def remove_attachment(self):
+        current_row = self.attachment_list.currentRow()
+        if current_row >= 0:
+            self.attachment_list.takeItem(current_row)
+            self.attachments.pop(current_row)
+            self.update_total_size()
 
 if __name__ == '__main__':
     app = QApplication(sys.argv)
