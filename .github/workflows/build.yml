@@ -38,6 +38,21 @@ jobs:
         pip install -r requirements.txt
         pip install pyinstaller
         
+    - name: Verify Required Files
+      run: |
+        if not exist "mail_sender.py" (
+          echo "Error: mail_sender.py not found"
+          exit 1
+        )
+        if not exist "imgs\logo.ico" (
+          echo "Error: imgs/logo.ico not found"
+          exit 1
+        )
+        if not exist "styles.py" (
+          echo "Error: styles.py not found"
+          exit 1
+        )
+
     - name: Build with PyInstaller
       run: |
         pyinstaller --noconfirm --onefile --windowed `
@@ -45,7 +60,7 @@ jobs:
           --add-data "styles.py;." `
           --icon=imgs/logo.ico `
           --name email-sender `
-          main.py
+          mail_sender.py
         
     - name: Verify Build
       run: |
