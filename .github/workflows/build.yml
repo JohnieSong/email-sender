@@ -37,48 +37,77 @@ jobs:
         python -m pip install --upgrade pip
         pip install -r requirements.txt
         pip install pyinstaller
+        pip list  # 显示所有已安装的包
         
     - name: Verify Required Files
       run: |
-        if not exist "mail_sender.py" (
-          echo "Error: mail_sender.py not found"
+        Write-Host "Checking required files..."
+        Get-ChildItem -Recurse | Select-Object FullName  # 显示所有文件
+        if (-not (Test-Path "mail_sender.py")) {
+          Write-Error "Error: mail_sender.py not found"
           exit 1
-        )
-        if not exist "imgs\logo.ico" (
-          echo "Error: imgs/logo.ico not found"
+        }
+        if (-not (Test-Path "imgs\logo.ico")) {
+          Write-Error "Error: imgs/logo.ico not found"
           exit 1
-        )
-        if not exist "styles.py" (
-          echo "Error: styles.py not found"
+        }
+        if (-not (Test-Path "styles.py")) {
+          Write-Error "Error: styles.py not found"
           exit 1
-        )
+        }
+        if (-not (Test-Path "requirements.txt")) {
+          Write-Error "Error: requirements.txt not found"
+          exit 1
+        }
 
     - name: Build with PyInstaller
       run: |
         pyinstaller --noconfirm --onefile --windowed `
           --add-data "imgs;imgs" `
           --add-data "styles.py;." `
+          --add-data "database.py;." `
+          --add-data "email_utils.py;." `
           --icon=imgs/logo.ico `
           --name email-sender `
+          --clean `
           mail_sender.py
         
     - name: Verify Build
       run: |
-        dir dist
-        if not exist "dist\email-sender.exe" (
-          echo "Build failed - executable not found"
+        Write-Host "Checking build output..."
+        Get-ChildItem dist
+        $exePath = "dist\email-sender.exe"
+        if (-not (Test-Path $exePath)) {
+          Write-Error "Build failed - executable not found"
           exit 1
-        )
+        }
+        $fileInfo = Get-Item $exePath
+        Write-Host "Executable size: $($fileInfo.Length) bytes"
+        if ($fileInfo.Length -lt 1MB) {
+          Write-Error "Suspicious file size - build might be incomplete"
+          exit 1
+        }
         
     - name: Create Release ZIP
       if: startsWith(github.ref, 'refs/tags/')
       run: |
-        cd dist
-        dir
-        7z a -tzip ../email-sender-${{ github.ref_name }}.zip *
-        cd ..
-        dir
+        Set-Location dist
+        Get-ChildItem
+        7z a -tzip "../email-sender-${{ github.ref_name }}.zip" *
+        Set-Location ..
+        Get-ChildItem
         
+    - name: Verify Release Files
+      if: startsWith(github.ref, 'refs/tags/')
+      run: |
+        Write-Host "Verifying release files..."
+        Get-ChildItem "email-sender-${{ github.ref_name }}.zip"
+        Get-ChildItem "dist\email-sender.exe"
+        if (-not (Test-Path "CHANGELOG.md")) {
+          Write-Error "CHANGELOG.md not found"
+          exit 1
+        }
+
     - name: Create Release
       if: startsWith(github.ref, 'refs/tags/')
       uses: softprops/action-gh-release@v2
@@ -104,4 +133,15 @@ jobs:
           dist/email-sender.exe
           README.md
           requirements.txt
-        retention-days: 90 
+        retention-days: 90
+
+    - name: Collect Environment Info
+      run: |
+        Write-Host "Python Version:"
+        python --version
+        Write-Host "Pip Version:"
+        pip --version
+        Write-Host "System Info:"
+        systeminfo | Select-String "OS"
+        Write-Host "Working Directory:"
+        Get-Location 
