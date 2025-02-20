@@ -199,7 +199,7 @@ class EmailSender(QMainWindow):
             
             # 检查必需列
             if not all(col in self.df.columns for col in required_columns):
-                MessageBox.show('错误', 'Excel文件必须包含：姓名、收件人邮箱', 'error', parent=self)
+                MessageBox.show('错误', 'Excel文件必须包含：姓名、收件人邮箱', 'critical', parent=self)
                 self.df = None
                 return
             
@@ -244,10 +244,10 @@ class EmailSender(QMainWindow):
             self.set_status(f'已导入 {len(self.df)} 条数据，并更新变量列表')
             
         except pd.errors.ParserError:
-            MessageBox.show('错误', 'Excel文件格式错误', 'error', parent=self)
+            MessageBox.show('错误', 'Excel文件格式错误', 'critical', parent=self)
             self.df = None
         except Exception as e:
-            MessageBox.show('错误', f'导入失败：{str(e)}', 'error', parent=self)
+            MessageBox.show('错误', f'导入失败：{str(e)}', 'critical', parent=self)
             self.df = None
 
     def import_template(self):
@@ -324,7 +324,7 @@ class EmailSender(QMainWindow):
                         MessageBox.show(
                             '错误',
                             '模板保存失败',
-                            'error',
+                            'critical',
                             parent=self
                         )
                     
@@ -333,7 +333,7 @@ class EmailSender(QMainWindow):
                 MessageBox.show(
                     '错误',
                     f'解析模板文件失败: {str(e)}',
-                    'error',
+                    'critical',
                     parent=self
                 )
             
@@ -342,7 +342,7 @@ class EmailSender(QMainWindow):
             MessageBox.show(
                 '错误',
                 f'导入模板失败: {str(e)}',
-                'error',
+                'critical',
                 parent=self
             )
 
@@ -596,7 +596,7 @@ class EmailSender(QMainWindow):
             templates = self.db.get_templates()
             template = templates.get(template_name)
             if not template:
-                MessageBox.show('错误', '模板加载失败', 'error', parent=self)
+                MessageBox.show('错误', '模板加载失败', 'critical', parent=self)
                 preview_window.close()
                 return
             
@@ -648,7 +648,7 @@ class EmailSender(QMainWindow):
                 preview_window.close()
                 
         except Exception as e:
-            MessageBox.show('错误', f'预览失败：{str(e)}', 'error', parent=self)
+            MessageBox.show('错误', f'预览失败：{str(e)}', 'critical', parent=self)
             preview_window.close()
 
     def update_test_button(self):
@@ -704,7 +704,7 @@ class EmailSender(QMainWindow):
             templates = self.db.get_templates()
             template = templates.get(template_name)
             if not template:
-                MessageBox.show('错误', '模板加载失败', 'error', parent=self)
+                MessageBox.show('错误', '模板加载失败', 'critical', parent=self)
                 return
 
             # 禁用测试按钮
@@ -722,7 +722,7 @@ class EmailSender(QMainWindow):
             self.test_thread.start()
 
         except Exception as e:
-            MessageBox.show('错误', f'发送失败：{str(e)}', 'error', parent=self)
+            MessageBox.show('错误', f'发送失败：{str(e)}', 'critical', parent=self)
             self.test_btn.setEnabled(True)
 
     def on_test_email_finished(self, success, message):
@@ -789,7 +789,7 @@ class EmailSender(QMainWindow):
             self.send_thread.start()
             
         except Exception as e:
-            MessageBox.show('错误', f'发送失败：{str(e)}', 'error', parent=self)
+            MessageBox.show('错误', f'发送失败：{str(e)}', 'critical', parent=self)
             self._reset_ui_state()
 
     def _reset_ui_state(self):
@@ -844,7 +844,7 @@ class EmailSender(QMainWindow):
             self._reset_ui_state()
             
             if not success:
-                MessageBox.show('错误', f'发送失败: {message}', 'error', parent=self)
+                MessageBox.show('错误', f'发送失败: {message}', 'critical', parent=self)
             
             # 弹窗提示是否需要导出发送结果
             reply = MessageBox.question('提示', '是否需要导出发送结果？', 'info', parent=self)
@@ -854,7 +854,7 @@ class EmailSender(QMainWindow):
                     self.export_batch_result(batch_id)
             
         except Exception as e:
-            MessageBox.show('错误', f'处理发送完成失败：{str(e)}', 'error', parent=self)
+            MessageBox.show('错误', f'处理发送完成失败：{str(e)}', 'critical', parent=self)
 
     def load_templates(self):
         """加载模板列表"""
@@ -1024,33 +1024,10 @@ class EmailSender(QMainWindow):
     def handle_link_click(self, url):
         """处理链接点击"""
         import webbrowser
-        webbrowser.open(url.toString())
-        # 重新加载预览内容，防止被清空
-        template_name = self.template_combo.currentText()
-        if template_name:
-            try:
-                # 从数据库加载模板
-                templates = self.db.get_templates()
-                template = templates.get(template_name)
-                if template:
-                    # 使用config/config.ini中的测试数据
-                    test_data = self.config.get_test_data()
-                    
-                    # 替换标题中的变量
-                    title = template['title']
-                    for var, value in test_data.items():
-                        title = title.replace(f'{{{var}}}', value)
-                        
-                    # 替换内容中的变量
-                    content = template['content']
-                    for var, value in test_data.items():
-                        content = content.replace(f'{{{var}}}', value)
-                        
-                    # 更新预览
-                    self.preview_title.setText(title)
-                    self.preview_content.setHtml(content)
-            except Exception as e:
-                self.set_status(f'加载模板失败: {str(e)}')
+        try:
+            webbrowser.open(url.toString())
+        except Exception as e:
+            self.set_status(f'打开链接失败: {str(e)}')
 
     def manage_mail_server(self):
         """打开邮件服务器管理对话框"""
@@ -1339,6 +1316,7 @@ class EmailSender(QMainWindow):
         self.preview_content = QTextBrowser()
         self.preview_content.setOpenExternalLinks(False)
         self.preview_content.setOpenLinks(False)
+        self.preview_content.anchorClicked.connect(self.handle_link_click)
         self.preview_content.setMinimumWidth(600)
         self.preview_content.setStyleSheet("""
             QTextBrowser {
@@ -1505,7 +1483,7 @@ class EmailSender(QMainWindow):
             
             MessageBox.show('成功', f'发送完成,结果已导出到: {file_name}', 'info', parent=self)
         except Exception as e:
-            MessageBox.show('错误', f'导出结果失败: {str(e)}', 'error', parent=self)
+            MessageBox.show('错误', f'导出结果失败: {str(e)}', 'critical', parent=self)
 
     def show_history(self):
         """显示历史记录对话框"""
