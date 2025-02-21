@@ -6,6 +6,7 @@ import re
 import os
 import time
 from email.mime.application import MIMEApplication
+import email.utils
 
 class EmailServer:
     # 添加附件大小限制常量（20MB）
@@ -96,16 +97,25 @@ class EmailServer:
                 sender_info = sender
                 break
             
-        # 设置发件人显示格式
+        # 设置发件人显示格式，确保符合 RFC 标准
         if sender_info and sender_info.get('nickname'):
-            from_addr = f"{sender_info['nickname']} <{self.email}>"
+            # 对昵称进行 RFC 2047 编码，并处理特殊字符
+            nickname = sender_info['nickname'].replace('"', '')  # 移除引号
+            encoded_nickname = Header(nickname, 'utf-8').encode()
+            from_addr = f"{encoded_nickname} <{self.email}>"
         else:
-            from_addr = self.email
+            from_addr = f"<{self.email}>"
         
+        # 设置邮件头部，确保所有必需的头部都符合标准
         msg['From'] = from_addr
-        msg['To'] = to_email
-        msg['Subject'] = Header(subject, 'utf-8')
-        msg['Message-ID'] = f"<{int(time.time())}@{self.email.split('@')[1]}>"
+        # 对收件人地址进行格式化
+        msg['To'] = email.utils.formataddr(('', to_email))
+        msg['Subject'] = Header(subject, 'utf-8').encode()
+        msg['Date'] = email.utils.formatdate(localtime=True)
+        msg['Message-ID'] = email.utils.make_msgid(domain=self.email.split('@')[1])
+        # 添加必要的头部
+        msg['MIME-Version'] = '1.0'
+        msg['Content-Type'] = 'multipart/mixed; boundary="{}"'.format(msg.get_boundary())
         
         # 创建alternative部分来包含纯文本和HTML内容
         alt_part = MIMEMultipart('alternative')
